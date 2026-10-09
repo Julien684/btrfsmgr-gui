@@ -31,10 +31,10 @@ GUI_DEST=/bin/btrfsmgr-gui
 if [[ -f "$SRC_DIR/btrfsmgr-gui.py" ]]; then
     install -m 0755 "$SRC_DIR/btrfsmgr-gui.py" "$GUI_DEST"
     echo "✓ btrfsmgr-gui installé dans $GUI_DEST"
-    if ! python3 -c "import gi" 2>/dev/null; then
-        echo "⚠ python3-gobject (gi) introuvable — le GUI GTK3 en a besoin."
+    if ! python3 -c "import gi; gi.require_version('Gtk','4.0'); from gi.repository import Gtk" 2>/dev/null; then
+        echo "⚠ python3-gobject / gtk4 introuvable — le GUI en a besoin."
         echo "  Solus:  eopkg install python3-gobject"
-        echo "  Debian: apt install python3-gi gir1.2-gtk-3.0"
+        echo "  Debian: apt install python3-gi gir1.2-gtk-4.0"
     fi
 fi
 

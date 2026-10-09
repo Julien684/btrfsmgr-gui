@@ -28,7 +28,7 @@ restauration, et entrées de boot GRUB / systemd-boot.
 
 ```sh
 # Téléchargement et installation direct du paquet depuis Gitea (depoa) :
-sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.0.7-1-1-x86_64.eopkg
+sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.1.0-1-1-x86_64.eopkg
 ```
 
 > **Pourquoi le *release* dans le nom de fichier** : eopkg met en cache les
@@ -73,10 +73,10 @@ Dépendances : `btrfs-progs`, `python3 ≥ 3.8`, `systemd` (timers).
 La restauration ne nécessite **ni rsync ni copie** : c'est un swap CoW
 de sous-volumes (deux `mv`).
 
-## Interface graphique (GTK3)
+## Interface graphique (GTK4)
 
 En plus du TUI, `btrfsmgr-gui` offre la même gestion en interface
-graphique native (GTK3 / PyGObject) : navigation par pages (Général,
+graphique native (GTK4 / PyGObject) : navigation par pages (Général,
 Snapshots, Automatisation, Boot), listes cliquables, boutons d'action et
 un panneau de journal qui reprend la sortie console du TUI. Les opérations
 sont exécutées hors du fil d'affichage (pas de gel de la fenêtre).
@@ -90,7 +90,7 @@ sudo btrfsmgr-gui /mnt/backup     # gère un autre sous-volume BTRFS
 
 Le GUI **réutilise la même logique métier** que le TUI (`btrfsmgr.py`) :
 aucune duplication de code. Dépendance supplémentaire : `python3-gobject`
-+ `gtk3` (Solus : `eopkg install python3-gobject`). Lancé depuis le menu
++ `gtk4` (Solus : `eopkg install python3-gobject`). Lancé depuis le menu
 de programmes, il se réélève en root via `pkexec` s'il est disponible.
 
 
@@ -261,7 +261,7 @@ systemd-boot boot entries.
 
 ```sh
 # Direct download and installation of the package from Gitea (depoa):
-sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.0.7-1-1-x86_64.eopkg
+sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.1.0-1-1-x86_64.eopkg
 ```
 
 > **Why the *release* in the filename**: eopkg caches `.eopkg` files
@@ -306,10 +306,10 @@ Dependencies: `btrfs-progs`, `python3 ≥ 3.8`, `systemd` (timers).
 Restoration requires **no rsync and no copy**: it is a CoW subvolume
 swap (two `mv` commands).
 
-## Graphical interface (GTK3)
+## Graphical interface (GTK4)
 
 Besides the TUI, `btrfsmgr-gui` provides the same management through a
-native graphical interface (GTK3 / PyGObject): page-based navigation
+native graphical interface (GTK4 / PyGObject): page-based navigation
 (General, Snapshots, Scheduling, Boot), clickable lists, action buttons,
 and a log panel that mirrors the TUI's console output. Operations run off
 the UI thread (the window never freezes).
@@ -322,7 +322,7 @@ sudo btrfsmgr-gui /mnt/backup     # manages another BTRFS subvolume
 ```
 
 The GUI **reuses the same business logic** as the TUI (`btrfsmgr.py`):
-no duplicated code. Extra dependency: `python3-gobject` + `gtk3`
+no duplicated code. Extra dependency: `python3-gobject` + `gtk4`
 (Solus: `eopkg install python3-gobject`). When launched from the program
 menu, it re-elevates to root via `pkexec` if available.
 

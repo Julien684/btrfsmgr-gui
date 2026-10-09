@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-btrfsmgr-gui — Interface graphique (GTK3) pour gérer les sous-volumes BTRFS.
+btrfsmgr-gui — Interface graphique (GTK4) pour gérer les sous-volumes BTRFS.
 
 Réutilise la logique métier du TUI (btrfsmgr.py) sans la dupliquer :
   * Créer / lister / restaurer / supprimer des instantanés
@@ -13,7 +13,7 @@ La sortie console des fonctions réutilisées est capturée et affichée dans
 un panneau de journal, afin qu'aucune information ne soit perdue par rapport
 au mode TUI.
 
-Dépendances graphiques : python3-gobject (PyGObject), gtk3.
+Dépendances graphiques : python3-gobject (PyGObject), gtk4.
 Dépendances métier    : btrfs-progs, systemd, python3 >= 3.8.
 
 Usage:
@@ -76,17 +76,27 @@ DEFAULT_SNAPDIR = CORE.DEFAULT_SNAPDIR
 
 
 # ---------------------------------------------------------------------------
-# GTK / Gtk3 via PyGObject
+# GTK 4 via PyGObject
 # ---------------------------------------------------------------------------
 try:
     import gi
-    gi.require_version("Gtk", "3.0")
-    from gi.repository import Gtk, GLib
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, GLib, Gdk
 except Exception as e:  # pragma: no cover
     sys.stderr.write(
         "ERREUR: interface graphique indisponible — installez "
-        "python3-gobject et gtk3.\n  Détail: %s\n" % e)
+        "python3-gobject et gtk4.\n  Détail: %s\n" % e)
     sys.exit(1)
+
+
+# Boucle principale (GTK4 : Gtk.main()/Gtk.main_quit() ont été supprimés).
+_MAIN_LOOP = None
+
+
+def _quit_app(*a):
+    """Quitter l'application (fermeture fenêtre / bouton Quitter)."""
+    if _MAIN_LOOP is not None:
+        _MAIN_LOOP.quit()
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +153,8 @@ def _label(text=None, markup=None, selectable=False):
         lb.set_markup(markup)
     lb.set_selectable(selectable)
     lb.set_xalign(0)
-    lb.set_line_wrap(True)
+    # GTK4 : set_line_wrap() a été renommé set_wrap()
+    lb.set_wrap(True)
     return lb
 
 
@@ -152,9 +163,9 @@ def _button(text, handler=None, sensitive=True, style=None):
     if handler:
         btn.connect("clicked", handler)
     if style == "destructive":
-        btn.get_style_context().add_class("destructive-action")
+        btn.add_css_class("destructive-action")
     elif style == "suggested":
-        btn.get_style_context().add_class("suggested-action")
+        btn.add_css_class("suggested-action")
     return btn
 
 
@@ -165,26 +176,67 @@ def _spinner() -> Gtk.Spinner:
 
 
 # ---------------------------------------------------------------------------
-# Dialogues
+# Dialogues — GTK4 a supprimé Gtk.Dialog.run() : on affiche la fenêtre modale
+# et on lance une boucle GLib imbriquée jusqu'à la réponse.
 # ---------------------------------------------------------------------------
+def _modal(parent, title, build_content, buttons, width=380):
+    """Dialogue modal synchrone.
+
+    `buttons` : liste de (libellé, valeur, style|None).  Renvoie la valeur du
+    bouton cliqué, ou None si la fenêtre est fermée.
+    """
+    win = Gtk.Window(transient_for=parent, modal=True, title=title)
+    win.set_default_size(width, -1)
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    outer.set_margin_top(14)
+    outer.set_margin_bottom(14)
+    outer.set_margin_start(14)
+    outer.set_margin_end(14)
+    win.set_child(outer)
+
+    build_content(outer)
+
+    bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    bar.set_halign(Gtk.Align.END)
+    bar.set_margin_top(4)
+    outer.append(bar)
+
+    loop = GLib.MainLoop()
+    state = {"val": None}
+
+    def choose(val):
+        def cb(_btn):
+            state["val"] = val
+            loop.quit()
+        return cb
+
+    for label, val, style in buttons:
+        bar.append(_button(label, choose(val), style=style))
+
+    win.connect("close-request", lambda *_: (loop.quit(), True)[1])
+    win.present()
+    loop.run()
+    win.destroy()
+    return state["val"]
+
+
+def _text_body(title, text):
+    def build(box):
+        box.append(_label(markup=f"<b>{title}</b>"))
+        if text:
+            box.append(_label(text))
+    return build
+
+
 def message(parent, kind, title, text):
-    dlg = Gtk.MessageDialog(
-        transient_for=parent, modal=True,
-        message_type=kind, buttons=Gtk.ButtonsType.OK,
-        text=title, secondary_text=text)
-    dlg.run()
-    dlg.destroy()
+    """Boîte d'information (le type `kind` est accepté pour compat, sans effet)."""
+    _modal(parent, title, _text_body(title, text), [(_("OK"), True, None)])
 
 
 def ask_yes_no(parent, title, text) -> bool:
-    dlg = Gtk.MessageDialog(
-        transient_for=parent, modal=True,
-        message_type=Gtk.MessageType.QUESTION,
-        buttons=Gtk.ButtonsType.YES_NO, text=title,
-        secondary_text=text)
-    res = dlg.run()
-    dlg.destroy()
-    return res == Gtk.ResponseType.YES
+    return _modal(parent, title, _text_body(title, text),
+                  [(_("Non"), False, None), (_("Oui"), True, "suggested")],
+                  width=440) is True
 
 
 def _entry_row(label_text, default="") -> tuple[Gtk.Box, Gtk.Entry]:
@@ -192,8 +244,9 @@ def _entry_row(label_text, default="") -> tuple[Gtk.Box, Gtk.Entry]:
     lb = _label(label_text)
     entry = Gtk.Entry()
     entry.set_text(default)
-    box.pack_start(lb, False, False, 0)
-    box.pack_start(entry, True, True, 0)
+    entry.set_hexpand(True)
+    box.append(lb)
+    box.append(entry)
     return box, entry
 
 
@@ -202,8 +255,8 @@ def _spin_row(label_text, lo, hi, default) -> tuple[Gtk.Box, Gtk.SpinButton]:
     lb = _label(label_text)
     adj = Gtk.Adjustment(value=default, lower=lo, upper=hi, step_increment=1)
     spin = Gtk.SpinButton(adjustment=adj, climb_rate=1.0, digits=0)
-    box.pack_start(lb, False, False, 0)
-    box.pack_start(spin, False, False, 0)
+    box.append(lb)
+    box.append(spin)
     return box, spin
 
 
@@ -216,51 +269,60 @@ class BtrfsMgrApp:
         self.snapdir = snapdir
         self._busy = False
 
-        self.builder = Gtk.Builder()
         win = Gtk.Window()
         win.set_title(_f(" {app} — Gestionnaire BTRFS", app=APP.capitalize()))
         win.set_default_size(940, 620)
-        win.set_border_width(0)
-        win.connect("delete-event", lambda *_: Gtk.main_quit())
+        win.connect("close-request", lambda *_: _quit_app() or False)
 
         # ---- barre d'en-tête --------------------------------------------
         header = Gtk.HeaderBar()
-        header.set_show_close_button(True)
-        header.props.title = _f("{app} — Gestionnaire de snapshots BTRFS",
-                                app=APP.capitalize())
-        header.props.subtitle = _f("v{ver} — racine: {root}",
-                                   ver=VERSION, root=self.root)
+        header.set_show_title_buttons(True)
         win.set_titlebar(header)
+
+        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                            valign=Gtk.Align.CENTER)
+        t_lbl = Gtk.Label(label=_f("{app} — Gestionnaire de snapshots BTRFS",
+                                   app=APP.capitalize()))
+        t_lbl.add_css_class("title")
+        s_lbl = Gtk.Label(label=_f("v{ver} — racine: {root}",
+                                   ver=VERSION, root=self.root))
+        s_lbl.add_css_class("subtitle")
+        title_box.append(t_lbl)
+        title_box.append(s_lbl)
+        header.set_title_widget(title_box)
 
         refresh_btn = Gtk.Button(label=_("Actualiser"))
         refresh_btn.connect("clicked", lambda *_: self.refresh_all())
         header.pack_end(refresh_btn)
 
         quit_btn = Gtk.Button(label=_("Quitter"))
-        quit_btn.connect("clicked", lambda *_: Gtk.main_quit())
+        quit_btn.connect("clicked", lambda *_: _quit_app())
         header.pack_end(quit_btn)
 
         # ---- layout principal : sidebar (gauche) + pile (droite) ----------
         self.main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        win.add(self.main)
+        win.set_child(self.main)
 
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
-        self.main.pack_start(paned, True, True, 0)
+        paned.set_vexpand(True)
+        self.main.append(paned)
 
         # sidebar des boutons de navigation
         sidebar = _vbox(spacing=4, margin=10)
         sidebar.set_size_request(210, -1)
         sidebar_label = _label(markup="<b>" + _("Actions") + "</b>")
-        sidebar.pack_start(sidebar_label, False, False, 0)
-        paned.pack1(sidebar, False, False)
+        sidebar.append(sidebar_label)
+        paned.set_start_child(sidebar)
+        paned.set_resize_start_child(False)
+        paned.set_shrink_start_child(False)
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        paned.pack2(self.stack, True, True)
+        paned.set_end_child(self.stack)
 
         # --- panneau de journal (bas de la fenêtre) ----------------------
         log_label = _label(markup="<b>" + _("Journal") + "</b>")
-        self.main.pack_start(log_label, False, False, 0)
+        self.main.append(log_label)
         log_sw = Gtk.ScrolledWindow()
         log_sw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         log_sw.set_min_content_height(120)
@@ -268,8 +330,8 @@ class BtrfsMgrApp:
         self.textlog.set_editable(False)
         self.textlog.set_monospace(True)
         self.textlog.set_wrap_mode(Gtk.WrapMode.NONE)
-        log_sw.add(self.textlog)
-        self.main.pack_start(log_sw, False, False, 0)
+        log_sw.set_child(self.textlog)
+        self.main.append(log_sw)
         self.logbuf = self.textlog.get_buffer()
 
         # barre de statut avec spinner
@@ -279,9 +341,10 @@ class BtrfsMgrApp:
         statusbar.set_margin_bottom(6)
         self.spinner = _spinner()
         self.status = _label("")
-        statusbar.pack_start(self.spinner, False, False, 0)
-        statusbar.pack_start(self.status, True, True, 0)
-        self.main.pack_start(statusbar, False, False, 0)
+        self.status.set_hexpand(True)
+        statusbar.append(self.spinner)
+        statusbar.append(self.status)
+        self.main.append(statusbar)
 
         # ---- construction des pages ---------------------------------------
         self._build_info_page()
@@ -297,10 +360,10 @@ class BtrfsMgrApp:
             nav = _button(label_txt,
                           (lambda _btn, n=name:
                            self.stack.set_visible_child_name(n)))
-            sidebar.pack_start(nav, False, False, 0)
+            sidebar.append(nav)
 
         self.win = win
-        win.show_all()
+        win.present()
         self.log(_f("{app} v{ver} — sous-volume racine: {root}",
                     app=APP.capitalize(), ver=VERSION, root=self.root))
         # synchronisation des entrées de boot + montage snapdir au démarrage
@@ -321,8 +384,9 @@ class BtrfsMgrApp:
         self.logbuf.insert(self.logbuf.get_end_iter(), text + "\n")
         # auto-scroll
         try:
-            self.textlog.scroll_mark_onscreen(
-                self.logbuf.create_mark(None, self.logbuf.get_end_iter(), False))
+            mark = self.logbuf.create_mark(
+                "end", self.logbuf.get_end_iter(), False)
+            self.textlog.scroll_mark_onscreen(mark)
         except Exception:
             pass
 
@@ -350,9 +414,9 @@ class BtrfsMgrApp:
 
         card = Gtk.Frame(label=_("Informations"))
         grid = Gtk.Grid(column_spacing=16, row_spacing=8)
-        card.add(grid)
+        card.set_child(grid)
         card.set_margin_top(6)
-        page.pack_start(card, False, False, 0)
+        page.append(card)
 
         self.lbl_version = _label(selectable=True)
         self.lbl_bootloader = _label(selectable=True)
@@ -378,7 +442,7 @@ class BtrfsMgrApp:
         hint = _label(_("Cliquez sur « Actualiser » ou changez de page pour "
                         "recharger ces informations."))
         hint.set_margin_top(10)
-        page.pack_start(hint, False, False, 0)
+        page.append(hint)
 
     # ------------------------------------------------------------ snapshots
     def _build_snapshots_page(self):
@@ -387,7 +451,7 @@ class BtrfsMgrApp:
         self.stack.add_named(page, "snapshots")
 
         toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        page.pack_start(toolbar, False, False, 0)
+        page.append(toolbar)
 
         btn_create = _button(_("Créer un instantané"), self.on_create,
                              style="suggested")
@@ -396,7 +460,7 @@ class BtrfsMgrApp:
                           style="destructive")
         btn_retention = _button(_("Rétention (garder N)"), self.on_retention)
         for b in (btn_create, btn_restore, btn_del, btn_retention):
-            toolbar.pack_start(b, False, False, 0)
+            toolbar.append(b)
 
         # colonnes : nom | génération | chemin
         self.store = Gtk.ListStore(str, str, str)
@@ -409,12 +473,13 @@ class BtrfsMgrApp:
 
         sw = Gtk.ScrolledWindow()
         sw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        sw.add(self.tree)
-        page.pack_start(sw, True, True, 0)
+        sw.set_vexpand(True)
+        sw.set_child(self.tree)
+        page.append(sw)
 
         hint = _label(_("Astuce : sélectionnez plusieurs lignes (Ctrl/Shift) "
                         "pour supprimer en une fois."))
-        page.pack_start(hint, False, False, 0)
+        page.append(hint)
 
     def _snap_rows(self) -> list[tuple[str, str, str]]:
         snaps = CORE.list_snapshots(self.root, self.snapdir)
@@ -424,11 +489,13 @@ class BtrfsMgrApp:
         return rows
 
     def _selected_paths(self) -> list[str]:
-        paths = []
-        model, treeiters = self.tree.get_selection().get_selected_rows()
-        for it in treeiters:
-            paths.append(model.get_value(it, 2))
-        return paths
+        out = []
+        selection = self.tree.get_selection()
+        model, paths = selection.get_selected_rows()
+        for p in paths:
+            it = model.get_iter(p)
+            out.append(model.get_value(it, 2))
+        return out
 
     def refresh_snapshots(self):
         self.store.clear()
@@ -450,34 +517,28 @@ class BtrfsMgrApp:
 
     # -------------------------------------------------------------- create
     def on_create(self, *a):
-        dlg = Gtk.Dialog(title=_("Créer un instantané"),
-                         transient_for=self.win, modal=True)
-        dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-                        Gtk.STOCK_OK, Gtk.ResponseType.OK)
-        box = dlg.get_content_area()
-        box.set_spacing(8)
-        box.set_margin_top(12)
-        box.set_margin_bottom(12)
-        box.set_margin_start(12)
-        box.set_margin_end(12)
-        r, entry = _entry_row(_("Nom du snapshot"), CORE.now_stamp())
-        box.pack_start(r, False, False, 0)
-        dlg.show_all()
-        if dlg.run() == Gtk.ResponseType.OK:
-            name = entry.get_text().strip()
-            dlg.destroy()
-            if not name:
-                message(self.win, Gtk.MessageType.ERROR, _("Nom vide"),
-                        _("Veuillez saisir un nom de snapshot."))
-                return
-            self.set_busy(True)
-            run_async(
-                lambda: (CORE.create_snapshot(self.root, self.snapdir, name),
-                         CORE.sync_bootloader_entries(self.root, self.snapdir,
-                                                      verbose=False)),
-                lambda r, o: self._create_done(r, o, name))
-        else:
-            dlg.destroy()
+        state = {}
+
+        def build(box):
+            r, entry = _entry_row(_("Nom du snapshot"), CORE.now_stamp())
+            state["entry"] = entry
+            box.append(r)
+
+        if _modal(self.win, _("Créer un instantané"), build,
+                  [(_("Annuler"), False, None),
+                   (_("Créer"), True, "suggested")]) is not True:
+            return
+        name = state["entry"].get_text().strip()
+        if not name:
+            message(self.win, Gtk.MessageType.ERROR, _("Nom vide"),
+                    _("Veuillez saisir un nom de snapshot."))
+            return
+        self.set_busy(True)
+        run_async(
+            lambda: (CORE.create_snapshot(self.root, self.snapdir, name),
+                     CORE.sync_bootloader_entries(self.root, self.snapdir,
+                                                  verbose=False)),
+            lambda r, o: self._create_done(r, o, name))
 
     def _create_done(self, result, output, name):
         self.set_busy(False)
@@ -567,40 +628,34 @@ class BtrfsMgrApp:
 
     # ------------------------------------------------------------ retention
     def on_retention(self, *a):
-        dlg = Gtk.Dialog(title=_("Rétention manuelle"),
-                         transient_for=self.win, modal=True)
-        dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-                        Gtk.STOCK_OK, Gtk.ResponseType.OK)
-        box = dlg.get_content_area()
-        box.set_spacing(8)
-        box.set_margin_top(12)
-        box.set_margin_bottom(12)
-        box.set_margin_start(12)
-        box.set_margin_end(12)
-        r, spin = _spin_row(_("Conserver les N plus récents (0 = tous)"),
-                            0, 999, 7)
-        box.pack_start(r, False, False, 0)
-        dlg.show_all()
-        if dlg.run() == Gtk.ResponseType.OK:
-            keep = spin.get_value_as_int()
-            dlg.destroy()
-            snaps = CORE.list_snapshots(self.root, self.snapdir)
-            to_del = len(snaps) - keep if keep > 0 else 0
-            if to_del <= 0:
-                message(self.win, Gtk.MessageType.INFO,
-                        _("Rien à supprimer"),
-                        _("Aucun snapshot à supprimer (déjà ≤ N)."))
-                return
-            if ask_yes_no(self.win, _f("Supprimer {n} snapshot(s) ?",
-                                       n=to_del),
-                          _("Garder les %d plus récents, supprimer les autres "
-                            "— poursuivre ?") % keep):
-                self.set_busy(True)
-                run_async(lambda: CORE.prune_snapshots(self.root, self.snapdir,
-                                                        keep),
-                          lambda r, o: self._retention_done(r, o, keep))
-        else:
-            dlg.destroy()
+        state = {}
+
+        def build(box):
+            r, spin = _spin_row(_("Conserver les N plus récents (0 = tous)"),
+                                0, 999, 7)
+            state["spin"] = spin
+            box.append(r)
+
+        if _modal(self.win, _("Rétention manuelle"), build,
+                  [(_("Annuler"), False, None),
+                   (_("OK"), True, "suggested")]) is not True:
+            return
+        keep = state["spin"].get_value_as_int()
+        snaps = CORE.list_snapshots(self.root, self.snapdir)
+        to_del = len(snaps) - keep if keep > 0 else 0
+        if to_del <= 0:
+            message(self.win, Gtk.MessageType.INFO,
+                    _("Rien à supprimer"),
+                    _("Aucun snapshot à supprimer (déjà ≤ N)."))
+            return
+        if ask_yes_no(self.win, _f("Supprimer {n} snapshot(s) ?",
+                                   n=to_del),
+                      _("Garder les %d plus récents, supprimer les autres "
+                        "— poursuivre ?") % keep):
+            self.set_busy(True)
+            run_async(lambda: CORE.prune_snapshots(self.root, self.snapdir,
+                                                    keep),
+                      lambda r, o: self._retention_done(r, o, keep))
 
     def _retention_done(self, result, output, keep):
         self.set_busy(False)
@@ -619,52 +674,50 @@ class BtrfsMgrApp:
         # --- formulaire de création --------------------------------------
         form = Gtk.Frame(label=_("Créer une automatisation"))
         fb = _vbox(spacing=8, margin=8)
-        form.add(fb)
-        page.pack_start(form, False, False, 0)
+        form.set_child(fb)
+        page.append(form)
 
         rtag, self.e_tag = _entry_row(_("Nom du plan (ex. daily, weekly)"),
                                       "daily")
-        fb.pack_start(rtag, False, False, 0)
+        fb.append(rtag)
 
         # fréquence
-        fb.pack_start(_label(markup="<b>" + _("Fréquence") + "</b>"),
-                      False, False, 0)
+        fb.append(_label(markup="<b>" + _("Fréquence") + "</b>"))
         self.freq = Gtk.ComboBoxText()
         for f in (_("Chaque jour"), _("Chaque semaine"), _("Chaque mois")):
             self.freq.append_text(f)
         self.freq.set_active(0)
         self.freq.connect("changed", lambda *_: self._sync_day_visibility())
-        fb.pack_start(self.freq, False, False, 0)
+        fb.append(self.freq)
 
         # jour de la semaine (visible si hebdomadaire)
         rday, self.day_combo = _entry_row(_("Jour de la semaine (Mon..Sun)"),
                                           "Mon")
-        fb.pack_start(rday, False, False, 0)
+        fb.append(rday)
         self._freq_box = self.freq
         self._day_row = rday
-        rday.set_no_show_all(True)
-        rday.hide()
+        rday.set_visible(False)
 
         # heure
         rhour, self.spin_hour = _spin_row(_("Heure (0-23)"), 0, 23, 3)
-        fb.pack_start(rhour, False, False, 0)
+        fb.append(rhour)
 
         # au démarrage
         rb_boot, self.chk_boot, self.spin_delay = self._boot_options()
-        fb.pack_start(rb_boot, False, False, 0)
+        fb.append(rb_boot)
 
         # rétention
         rkeep, self.spin_keep = _spin_row(_("Snapshots à conserver"), 0, 999, 7)
-        fb.pack_start(rkeep, False, False, 0)
+        fb.append(rkeep)
 
         create_btn = _button(_("Créer le timer systemd"), self.on_schedule_create,
                              style="suggested")
-        fb.pack_start(create_btn, False, False, 0)
+        fb.append(create_btn)
 
         # --- liste des timers existants ------------------------------------
         hdr = _label(markup="<b>" + _("Automatisations existantes") + "</b>")
         hdr.set_margin_top(12)
-        page.pack_start(hdr, False, False, 0)
+        page.append(hdr)
 
         self.timer_store = Gtk.ListStore(str, str, str, str)  # timer, next, last, activated
         self.timer_tree = Gtk.TreeView(model=self.timer_store)
@@ -676,14 +729,13 @@ class BtrfsMgrApp:
         tsw = Gtk.ScrolledWindow()
         tsw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         tsw.set_min_content_height(160)
-        tsw.add(self.timer_tree)
-        page.pack_start(tsw, True, True, 0)
+        tsw.set_vexpand(True)
+        tsw.set_child(self.timer_tree)
+        page.append(tsw)
 
         del_btn = _button(_("Supprimer l'automatisation sélectionnée"),
                           self.on_timer_delete, style="destructive")
-        page.pack_start(del_btn, False, False, 0)
-
-        self.chk_boot_value = False
+        page.append(del_btn)
 
     def _boot_options(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -695,8 +747,8 @@ class BtrfsMgrApp:
         chk.connect("toggled",
                     lambda c: (r.set_sensitive(c.get_active()),
                                spin.set_sensitive(c.get_active())))
-        box.pack_start(chk, False, False, 0)
-        box.pack_start(r, False, False, 0)
+        box.append(chk)
+        box.append(r)
         return box, chk, spin
 
     def _sync_day_visibility(self, *a):
@@ -720,24 +772,19 @@ class BtrfsMgrApp:
                 schedule = f"{day} *-*-* {hour:02d}:00:00"
             else:
                 # mois: jour du mois
-                dlg = Gtk.Dialog(title=_("Jour du mois"),
-                                 transient_for=self.win, modal=True)
-                dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-                                Gtk.STOCK_OK, Gtk.ResponseType.OK)
-                bx = dlg.get_content_area()
-                bx.set_spacing(8)
-                bx.set_margin_top(12); bx.set_margin_bottom(12)
-                bx.set_margin_start(12); bx.set_margin_end(12)
-                r, spd = _spin_row(_("Numéro du jour dans le mois (1-31)"),
-                                   1, 31, 1)
-                bx.pack_start(r, False, False, 0)
-                dlg.show_all()
-                if dlg.run() == Gtk.ResponseType.OK:
-                    daynum = spd.get_value_as_int()
-                    dlg.destroy()
-                else:
-                    dlg.destroy()
+                state = {}
+
+                def build(box):
+                    r, spd = _spin_row(
+                        _("Numéro du jour dans le mois (1-31)"), 1, 31, 1)
+                    state["spin"] = spd
+                    box.append(r)
+
+                if _modal(self.win, _("Jour du mois"), build,
+                          [(_("Annuler"), False, None),
+                           (_("OK"), True, "suggested")]) is not True:
                     return
+                daynum = state["spin"].get_value_as_int()
                 schedule = f"*-*-{daynum} {hour:02d}:00:00"
 
         plan = (_("Au démarrage (%d min après le boot)") % boot_delay) if boot \
@@ -778,12 +825,13 @@ class BtrfsMgrApp:
                                      t["activated"]])
 
     def on_timer_delete(self, *a):
-        model, iters = self.timer_tree.get_selection().get_selected_rows()
-        if not iters:
+        selection = self.timer_tree.get_selection()
+        model, paths = selection.get_selected_rows()
+        if not paths:
             message(self.win, Gtk.MessageType.INFO, _("Rien à supprimer"),
                     _("Sélectionnez une automatisation dans la liste."))
             return
-        timer = model.get_value(iters[0], 0)
+        timer = model.get_value(model.get_iter(paths[0]), 0)
         # extraire le tag de l'unité (même logique que le TUI)
         import re as _re
         def safe(s):
@@ -816,30 +864,30 @@ class BtrfsMgrApp:
         info = _label(_("Afficher ou masquer le menu systemd-boot au "
                         "démarrage (clr-boot-manager set-timeout)."))
         info.set_margin_top(6)
-        page.pack_start(info, False, False, 0)
+        page.append(info)
 
         self.lbl_boot_loader = _label(selectable=True)
-        page.pack_start(self.lbl_boot_loader, False, False, 0)
+        page.append(self.lbl_boot_loader)
 
         frame = Gtk.Frame(label=_("Menu au démarrage"))
         fb = _vbox(spacing=8, margin=8)
-        frame.add(fb)
-        page.pack_start(frame, False, False, 0)
+        frame.set_child(fb)
+        page.append(frame)
 
-        fb.pack_start(_label(_("N > 0 : le menu est affiché pendant N "
-                               "secondes\n0     : le menu est masqué "
-                               "(boot direct)")), False, False, 0)
+        fb.append(_label(_("N > 0 : le menu est affiché pendant N "
+                           "secondes\n0     : le menu est masqué "
+                           "(boot direct)")))
         rh, self.spin_timeout = _spin_row(_("Nombre de secondes (0 = masquer)"),
                                           0, 300, 5)
-        fb.pack_start(rh, False, False, 0)
+        fb.append(rh)
         apply_btn = _button(_("Appliquer"), self.on_boot_timeout,
                             style="suggested")
-        fb.pack_start(apply_btn, False, False, 0)
+        fb.append(apply_btn)
 
         # liste des entrées systemd-boot générées
         bhdr = _label(markup="<b>" + _("Entrées de boot générées") + "</b>")
         bhdr.set_margin_top(12)
-        page.pack_start(bhdr, False, False, 0)
+        page.append(bhdr)
 
         self.boot_store = Gtk.ListStore(str, str)  # fichier, sous-volume
         self.boot_tree = Gtk.TreeView(model=self.boot_store)
@@ -850,8 +898,9 @@ class BtrfsMgrApp:
         bsw = Gtk.ScrolledWindow()
         bsw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         bsw.set_min_content_height(120)
-        bsw.add(self.boot_tree)
-        page.pack_start(bsw, True, True, 0)
+        bsw.set_vexpand(True)
+        bsw.set_child(self.boot_tree)
+        page.append(bsw)
 
     def refresh_boot(self):
         run_async(lambda: (CORE.detect_bootloader(),
@@ -984,9 +1033,8 @@ def _relaunch_root() -> bool:
     graphique.
 
     pkexec efface DISPLAY, WAYLAND_DISPLAY, XAUTHORITY, XDG_RUNTIME_DIR… par
-    défaut, si bien que le processus root ne peut pas initialiser GTK
-    (« Gtk couldn't be initialized »).  On les repasse explicitement via
-    `pkexec env VAR=… <programme>`.
+    défaut, si bien que le processus root ne peut pas initialiser GTK.  On les
+    repasse explicitement via `pkexec env VAR=… <programme>`.
 
     Renvoie True si l'exéc (réussi) a été lancé — le processus est alors
     remplacé ; False si pkexec est indisponible.
@@ -1012,7 +1060,24 @@ def _relaunch_root() -> bool:
     return False  # jamais atteint si execvp réussit
 
 
+def _display_available() -> bool:
+    """Vrai si un affichage est accessible à GTK4.
+
+    En GTK4, Gtk.init_check() renvoie True même sans affichage ; la source
+    fiable est Gdk.Display.get_default() (None si aucun affichage).
+    """
+    try:
+        Gtk.init_check()
+    except Exception:
+        pass
+    try:
+        return Gdk.Display.get_default() is not None
+    except Exception:
+        return False
+
+
 def main():
+    global _MAIN_LOOP
     root, snapdir = _parse_args(sys.argv[1:])
 
     if os.geteuid() != 0:
@@ -1026,10 +1091,7 @@ def main():
         sys.stderr.write("ERREUR: 'btrfs' introuvable. Installez btrfs-progs.\n")
         return 1
 
-    # Vérifier que GTK peut s'initialiser (affichage accessible) avant de
-    # construire la fenêtre — évite une traceback brute en cas d'échec.
-    ok, _argv = Gtk.init_check()
-    if not ok:
+    if not _display_available():
         sys.stderr.write(
             "ERREUR: impossible d'initialiser GTK — aucun affichage "
             "accessible.\n"
@@ -1041,8 +1103,9 @@ def main():
             "XAUTHORITY / WAYLAND_DISPLAY.\n")
         return 1
 
-    app = BtrfsMgrApp(root, snapdir)
-    Gtk.main()
+    _MAIN_LOOP = GLib.MainLoop()
+    BtrfsMgrApp(root, snapdir)
+    _MAIN_LOOP.run()
     return 0
 
 
