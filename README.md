@@ -27,8 +27,8 @@ restauration, et entrées de boot GRUB / systemd-boot.
 ### Installation via paquet eopkg (Solus)
 
 ```sh
-# Téléchargement et installation direct du paquet depuis Gitea (depoa) :
-sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.1.2-1-1-x86_64.eopkg
+# Téléchargement et installation direct du paquet depuis GitHub :
+sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.2-1-1-x86_64.eopkg
 ```
 
 > **Pourquoi le *release* dans le nom de fichier** : eopkg met en cache les
@@ -51,7 +51,7 @@ sudo eopkg remove btrfsmgr-gui
 
 ```sh
 # 1. Cloner le dépôt
-git clone https://depoa.julien68.fr/Linuxon/btrfsmgr-gui.git
+git clone https://github.com/Julien684/btrfsmgr-gui.git
 cd btrfsmgr-gui
 
 # 2. Installer
@@ -260,8 +260,8 @@ systemd-boot boot entries.
 ### Installation via eopkg package (Solus)
 
 ```sh
-# Direct download and installation of the package from Gitea (depoa):
-sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.1.2-1-1-x86_64.eopkg
+# Direct download and installation of the package from GitHub:
+sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.2-1-1-x86_64.eopkg
 ```
 
 > **Why the *release* in the filename**: eopkg caches `.eopkg` files
@@ -284,7 +284,7 @@ sudo eopkg remove btrfsmgr-gui
 
 ```sh
 # 1. Clone the repository
-git clone https://depoa.julien68.fr/Linuxon/btrfsmgr-gui.git
+git clone https://github.com/Julien684/btrfsmgr-gui.git
 cd btrfsmgr-gui
 
 # 2. Install
