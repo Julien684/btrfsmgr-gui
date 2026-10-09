@@ -81,7 +81,7 @@ DEFAULT_SNAPDIR = CORE.DEFAULT_SNAPDIR
 try:
     import gi
     gi.require_version("Gtk", "4.0")
-    from gi.repository import Gtk, GLib, Gdk
+    from gi.repository import Gtk, GLib, Gdk, Gio, GObject, Pango
 except Exception as e:  # pragma: no cover
     sys.stderr.write(
         "ERREUR: interface graphique indisponible — installez "
@@ -258,6 +258,54 @@ def _spin_row(label_text, lo, hi, default) -> tuple[Gtk.Box, Gtk.SpinButton]:
     box.append(lb)
     box.append(spin)
     return box, spin
+
+
+# ---------------------------------------------------------------------------
+# Listes (GTK4 : Gtk.TreeView/ListStore sont dépréciés → Gtk.ColumnView +
+# Gio.ListStore + Gtk.SignalListItemFactory)
+# ---------------------------------------------------------------------------
+class _ListRow(GObject.Object):
+    """Ligne de liste générique : valeurs texte indexables."""
+    __gtype_name__ = "BtrfsMgrListRow"
+
+    def __init__(self, values):
+        super().__init__()
+        self.values = list(values)
+
+
+def _list_column(title, index, expand=False) -> Gtk.ColumnViewColumn:
+    factory = Gtk.SignalListItemFactory()
+
+    def _setup(_factory, item):
+        lbl = Gtk.Label()
+        lbl.set_xalign(0)
+        lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        item.set_child(lbl)
+
+    def _bind(_factory, item):
+        row = item.get_item()
+        item.get_child().set_text(str(row.values[index]))
+
+    factory.connect("setup", _setup)
+    factory.connect("bind", _bind)
+    col = Gtk.ColumnViewColumn(title=title, factory=factory)
+    col.set_expand(expand)
+    return col
+
+
+def _make_list_view(columns, store, multi=False):
+    """Construit (ColumnView, SelectionModel, ScrolledWindow) autour de `store`."""
+    sel = (Gtk.MultiSelection(model=store) if multi
+           else Gtk.SingleSelection(model=store))
+    view = Gtk.ColumnView(model=sel)
+    view.set_vexpand(True)
+    for title, index, expand in columns:
+        view.append_column(_list_column(title, index, expand))
+    sw = Gtk.ScrolledWindow()
+    sw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+    sw.set_vexpand(True)
+    sw.set_child(view)
+    return view, sel, sw
 
 
 # ---------------------------------------------------------------------------
@@ -463,18 +511,11 @@ class BtrfsMgrApp:
             toolbar.append(b)
 
         # colonnes : nom | génération | chemin
-        self.store = Gtk.ListStore(str, str, str)
-        self.tree = Gtk.TreeView(model=self.store)
-        self.tree.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
-        for i, title in ((0, _("Nom")), (1, _("Gen")), (2, _("Chemin complet"))):
-            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)
-            col.set_expand(i == 2)
-            self.tree.append_column(col)
-
-        sw = Gtk.ScrolledWindow()
-        sw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        sw.set_vexpand(True)
-        sw.set_child(self.tree)
+        self.snap_store = Gio.ListStore.new(_ListRow)
+        self.snap_view, self.snap_sel, sw = _make_list_view(
+            [(_("Nom"), 0, False), (_("Gen"), 1, False),
+             (_("Chemin complet"), 2, True)],
+            self.snap_store, multi=True)
         page.append(sw)
 
         hint = _label(_("Astuce : sélectionnez plusieurs lignes (Ctrl/Shift) "
@@ -490,15 +531,13 @@ class BtrfsMgrApp:
 
     def _selected_paths(self) -> list[str]:
         out = []
-        selection = self.tree.get_selection()
-        model, paths = selection.get_selected_rows()
-        for p in paths:
-            it = model.get_iter(p)
-            out.append(model.get_value(it, 2))
+        bitset = self.snap_sel.get_selection()
+        for i in range(bitset.get_size()):
+            out.append(self.snap_store.get_item(bitset.get_nth(i)).values[2])
         return out
 
     def refresh_snapshots(self):
-        self.store.clear()
+        self.snap_store.remove_all()
         run_async(lambda: CORE.list_snapshots(self.root, self.snapdir),
                   self._load_snaps_done)
 
@@ -507,13 +546,13 @@ class BtrfsMgrApp:
             self.log(output.rstrip())
         if result is None:
             return
-        self.store.clear()
+        self.snap_store.remove_all()
         rows = [(s["path"], str(s["gen"]), s["full"])
                 for s in reversed(result)]
         if not rows:
             self.log(_("Aucun snapshot."))
         for r in rows:
-            self.store.append(list(r))
+            self.snap_store.append(_ListRow(r))
 
     # -------------------------------------------------------------- create
     def on_create(self, *a):
@@ -683,11 +722,11 @@ class BtrfsMgrApp:
 
         # fréquence
         fb.append(_label(markup="<b>" + _("Fréquence") + "</b>"))
-        self.freq = Gtk.ComboBoxText()
-        for f in (_("Chaque jour"), _("Chaque semaine"), _("Chaque mois")):
-            self.freq.append_text(f)
-        self.freq.set_active(0)
-        self.freq.connect("changed", lambda *_: self._sync_day_visibility())
+        self.freq = Gtk.DropDown.new_from_strings(
+            [_("Chaque jour"), _("Chaque semaine"), _("Chaque mois")])
+        self.freq.set_selected(0)
+        self.freq.connect("notify::selected",
+                          lambda *_: self._sync_day_visibility())
         fb.append(self.freq)
 
         # jour de la semaine (visible si hebdomadaire)
@@ -719,18 +758,12 @@ class BtrfsMgrApp:
         hdr.set_margin_top(12)
         page.append(hdr)
 
-        self.timer_store = Gtk.ListStore(str, str, str, str)  # timer, next, last, activated
-        self.timer_tree = Gtk.TreeView(model=self.timer_store)
-        for i, title in ((0, _("Unité")), (1, _("Prochaine exécution")),
-                         (2, _("Dernière")), (3, _("Activée"))):
-            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)
-            col.set_expand(i == 0)
-            self.timer_tree.append_column(col)
-        tsw = Gtk.ScrolledWindow()
-        tsw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.timer_store = Gio.ListStore.new(_ListRow)
+        self.timer_view, self.timer_sel, tsw = _make_list_view(
+            [(_("Unité"), 0, True), (_("Prochaine exécution"), 1, False),
+             (_("Dernière"), 2, False), (_("Activée"), 3, False)],
+            self.timer_store)
         tsw.set_min_content_height(160)
-        tsw.set_vexpand(True)
-        tsw.set_child(self.timer_tree)
         page.append(tsw)
 
         del_btn = _button(_("Supprimer l'automatisation sélectionnée"),
@@ -752,12 +785,12 @@ class BtrfsMgrApp:
         return box, chk, spin
 
     def _sync_day_visibility(self, *a):
-        active = self.freq.get_active()
+        active = self.freq.get_selected()
         self._day_row.set_visible(active == 1)
 
     def on_schedule_create(self, *a):
         tag = self.e_tag.get_text().strip() or "daily"
-        freq = self.freq.get_active()          # 0=day 1=week 2=month
+        freq = self.freq.get_selected()        # 0=day 1=week 2=month
         boot = self.chk_boot.get_active()
         boot_delay = self.spin_delay.get_value_as_int()
         keep = self.spin_keep.get_value_as_int()
@@ -813,25 +846,24 @@ class BtrfsMgrApp:
         self.refresh_timers()
 
     def refresh_timers(self):
-        self.timer_store.clear()
+        self.timer_store.remove_all()
         run_async(CORE.list_timers, self._load_timers_done)
 
     def _load_timers_done(self, result, output):
         if result is None:
             return
-        self.timer_store.clear()
+        self.timer_store.remove_all()
         for t in result:
-            self.timer_store.append([t["timer"], t["next"], t["last"],
-                                     t["activated"]])
+            self.timer_store.append(_ListRow([t["timer"], t["next"], t["last"],
+                                              t["activated"]]))
 
     def on_timer_delete(self, *a):
-        selection = self.timer_tree.get_selection()
-        model, paths = selection.get_selected_rows()
-        if not paths:
+        idx = self.timer_sel.get_selected()
+        if idx == Gtk.INVALID_LIST_POSITION:
             message(self.win, Gtk.MessageType.INFO, _("Rien à supprimer"),
                     _("Sélectionnez une automatisation dans la liste."))
             return
-        timer = model.get_value(model.get_iter(paths[0]), 0)
+        timer = self.timer_store.get_item(idx).values[0]
         # extraire le tag de l'unité (même logique que le TUI)
         import re as _re
         def safe(s):
@@ -889,17 +921,11 @@ class BtrfsMgrApp:
         bhdr.set_margin_top(12)
         page.append(bhdr)
 
-        self.boot_store = Gtk.ListStore(str, str)  # fichier, sous-volume
-        self.boot_tree = Gtk.TreeView(model=self.boot_store)
-        for i, title in ((0, _("Fichier")), (1, _("Sous-volume"))):
-            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)
-            col.set_expand(i == 1)
-            self.boot_tree.append_column(col)
-        bsw = Gtk.ScrolledWindow()
-        bsw.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.boot_store = Gio.ListStore.new(_ListRow)
+        self.boot_view, self.boot_sel, bsw = _make_list_view(
+            [(_("Fichier"), 0, False), (_("Sous-volume"), 1, True)],
+            self.boot_store)
         bsw.set_min_content_height(120)
-        bsw.set_vexpand(True)
-        bsw.set_child(self.boot_tree)
         page.append(bsw)
 
     def refresh_boot(self):
@@ -918,7 +944,7 @@ class BtrfsMgrApp:
 
         # lister les entrées btrfsmgr-*.conf (systemd-boot)
         entries = "/boot/loader/entries"
-        self.boot_store.clear()
+        self.boot_store.remove_all()
         if bootloader == "systemd-boot" and os.path.isdir(entries):
             for f in sorted(os.listdir(entries)):
                 if not f.startswith("btrfsmgr-") or not f.endswith(".conf"):
@@ -933,7 +959,7 @@ class BtrfsMgrApp:
                                 break
                 except OSError:
                     pass
-                self.boot_store.append([f, subvol])
+                self.boot_store.append(_ListRow([f, subvol]))
 
     def on_boot_timeout(self, *a):
         secs = self.spin_timeout.get_value_as_int()

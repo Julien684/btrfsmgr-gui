@@ -63,7 +63,7 @@ APP = "btrfsmgr"
 # ---------------------------------------------------------------------------
 # Version / mise à jour
 # ---------------------------------------------------------------------------
-VERSION = "1.1.0"          # version locale du logiciel (comparée aux tags Gitea)
+VERSION = "1.1.1"          # version locale du logiciel (comparée aux tags Gitea)
 PROJECT_REPO = "Linuxon/btrfsmgr-gui"
 PROJECT_REPO_URL = "https://depoa.julien68.fr/Linuxon/btrfsmgr-gui.git"
 PROJECT_API = "https://depoa.julien68.fr/api/v1/repos/Linuxon/btrfsmgr-gui"
