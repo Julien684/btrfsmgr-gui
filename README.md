@@ -1,4 +1,4 @@
-# btrfsmgr — Gestionnaire TUI BTRFS
+# btrfsmgr — Gestionnaire GUI BTRFS
 
 > ## ⚠️ Avertissement / Disclaimer
 >
@@ -230,7 +230,7 @@ Crée `//@snapshots/test` puis ne garde que les 3 plus récents.
 
 ---
 
-# btrfsmgr — BTRFS Snapshot Manager (TUI)
+# btrfsmgr — BTRFS Snapshot Manager (GUI)
 
 > ## ⚠️ Warning / Disclaimer
 >
