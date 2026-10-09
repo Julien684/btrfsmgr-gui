@@ -81,6 +81,8 @@ Snapshots, Automatisation, Boot), listes cliquables, boutons d'action et
 un panneau de journal qui reprend la sortie console du TUI. Les opérations
 sont exécutées hors du fil d'affichage (pas de gel de la fenêtre).
 
+![Interface graphique btrfsmgr-gui — page Snapshots](gui-screenshot.png)
+
 ```sh
 sudo btrfsmgr-gui                 # gère le sous-volume /
 sudo btrfsmgr-gui /mnt/backup     # gère un autre sous-volume BTRFS
@@ -311,6 +313,8 @@ native graphical interface (GTK3 / PyGObject): page-based navigation
 (General, Snapshots, Scheduling, Boot), clickable lists, action buttons,
 and a log panel that mirrors the TUI's console output. Operations run off
 the UI thread (the window never freezes).
+
+![btrfsmgr-gui graphical interface — Snapshots page](gui-screenshot.png)
 
 ```sh
 sudo btrfsmgr-gui                 # manages the / subvolume
