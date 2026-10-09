@@ -63,7 +63,7 @@ APP = "btrfsmgr"
 # ---------------------------------------------------------------------------
 # Version / mise à jour
 # ---------------------------------------------------------------------------
-VERSION = "1.0.6"          # version locale du logiciel (comparée aux tags Gitea)
+VERSION = "1.0.7"          # version locale du logiciel (comparée aux tags Gitea)
 PROJECT_REPO = "Linuxon/btrfsmgr-gui"
 PROJECT_REPO_URL = "https://depoa.julien68.fr/Linuxon/btrfsmgr-gui.git"
 PROJECT_API = "https://depoa.julien68.fr/api/v1/repos/Linuxon/btrfsmgr-gui"
@@ -250,9 +250,13 @@ def _(s: str) -> str:
     return s
 
 
-def _f(s: str, **kw) -> str:
-    """Traduire puis formater avec les paramètres nommés ({name})."""
-    return _(s).format(**kw)
+def _f(tmpl: str, **kw) -> str:
+    """Traduire puis formater avec les paramètres nommés ({name}).
+
+    Le 1er paramètre n'est PAS nommé `s` : sinon un appel comme
+    `_f("… {s}", s=val)` lève « got multiple values for argument 's' ».
+    """
+    return _(tmpl).format(**kw)
 
 # Dossier des snapshots, créé au même niveau que @ et @home
 DEFAULT_SNAPDIR = "snapshots"
