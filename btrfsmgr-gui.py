@@ -47,19 +47,20 @@ def _load_core():
         return sys.modules["btrfsmgr"]
     except ImportError:
         pass
-    import importlib.util
-    import importlib.machinery
+    # Charger la source DIRECTEMENT (compile/exec) plutôt que via importlib :
+    # les fichiers installés par le paquet ont mtime=0, ce qui peut faire
+    # passer un ancien __pycache__/*.pyc pour « valide » → le GUI exécuterait
+    # alors une version périmée du cœur.  exec(compile(...)) lit toujours le
+    # fichier réel.
+    import types
     for p in candidates:
         if os.path.isfile(p):
-            spec = importlib.util.spec_from_file_location("_btrfsmgr_core", p)
-            if spec is None or spec.loader is None:
-                loader = importlib.machinery.SourceFileLoader(
-                    "_btrfsmgr_core", p)
-                spec = importlib.util.spec_from_loader(
-                    "_btrfsmgr_core", loader)
-            mod = importlib.util.module_from_spec(spec)
+            with open(p, "rb") as f:
+                src = f.read()
+            mod = types.ModuleType("_btrfsmgr_core")
+            mod.__file__ = p
             sys.modules["_btrfsmgr_core"] = mod
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+            exec(compile(src, p, "exec"), mod.__dict__)
             return mod
     raise ImportError(
         "Impossible de localiser la logique métier (btrfsmgr.py).\n"

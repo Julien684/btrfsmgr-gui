@@ -28,7 +28,7 @@ restauration, et entrées de boot GRUB / systemd-boot.
 
 ```sh
 # Téléchargement et installation direct du paquet depuis Gitea (depoa) :
-sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.1.1-1-1-x86_64.eopkg
+sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.1.2-1-1-x86_64.eopkg
 ```
 
 > **Pourquoi le *release* dans le nom de fichier** : eopkg met en cache les
@@ -261,7 +261,7 @@ systemd-boot boot entries.
 
 ```sh
 # Direct download and installation of the package from Gitea (depoa):
-sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.1.1-1-1-x86_64.eopkg
+sudo eopkg install https://depoa.julien68.fr/Linuxon/btrfsmgr-gui/raw/branch/main/btrfsmgr-gui-1.1.2-1-1-x86_64.eopkg
 ```
 
 > **Why the *release* in the filename**: eopkg caches `.eopkg` files
