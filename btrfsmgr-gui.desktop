@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BTRFS Manager (GUI)
+Comment=Gérer les sous-volumes BTRFS — snapshots, restauration, automation (interface graphique)
+Exec=btrfsmgr-gui
+Icon=chronometer
+Terminal=false
+Categories=System;Filesystem;
+Keywords=btrfs;snapshot;submenu;restore;gui;
