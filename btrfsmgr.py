@@ -63,7 +63,7 @@ APP = "btrfsmgr"
 # ---------------------------------------------------------------------------
 # Version / mise à jour
 # ---------------------------------------------------------------------------
-VERSION = "1.1.2"          # version locale du logiciel (comparée aux tags Gitea)
+VERSION = "1.1.3"          # version locale du logiciel (comparée aux tags Gitea)
 PROJECT_REPO = "Linuxon/btrfsmgr-gui"
 PROJECT_REPO_URL = "https://depoa.julien68.fr/Linuxon/btrfsmgr-gui.git"
 PROJECT_API = "https://depoa.julien68.fr/api/v1/repos/Linuxon/btrfsmgr-gui"
@@ -87,6 +87,20 @@ def _detect_language() -> str:
 
 
 LANGUAGE = _detect_language()
+
+# Avertissement affiché avant de restaurer un instantané dont le noyau diffère
+# de celui du système en cours.  Le noyau de démarrage vit dans la partition
+# EFI (/boot), pas dans l'instantané (qui ne conserve que les modules) : après
+# restauration, la racine restaurée peut ne plus avoir les modules du noyau
+# qui démarrera.  (Constante partagée TUI + GUI, et clé de traduction ci-desous.)
+KERNEL_MISMATCH_WARNING = (
+    "⚠ Différence de noyau détectée !\n"
+    "  Noyau en cours        : {cur}\n"
+    "  Noyau de l'instantané : {snaps}\n\n"
+    "Le noyau de démarrage vit dans la partition EFI (/boot), pas dans "
+    "l'instantané (qui ne conserve que les modules usr/lib/modules). Après "
+    "restauration, la racine restaurée n'aura pas les modules du noyau {cur} "
+    "qui démarrera : le démarrage peut échouer ou être dégradé.")
 
 # Table de traduction EN (clé = chaîne FR source, valeur = EN).
 _EN = {
@@ -240,6 +254,45 @@ _EN = {
     "sous-dossier.  Utilisation de / (racine système).":
         "NOTE: root /snapshots detected — restore impossible on a subfolder.  "
         "Using / (system root).",
+
+    # --- avertissement noyau + choix d'adapter systemd-boot (TUI + GUI) -----
+    KERNEL_MISMATCH_WARNING:
+        "⚠ Kernel mismatch detected!\n"
+        "  Current kernel        : {cur}\n"
+        "  Snapshot kernel       : {snaps}\n\n"
+        "The boot kernel lives in the EFI partition (/boot), not in the "
+        "snapshot (which only keeps the usr/lib/modules modules). After "
+        "restoring, the restored root will not have the modules of the {cur} "
+        "kernel that will boot: booting may fail or be degraded.",
+    "Adapter les entrées de démarrage systemd-boot ?":
+        "Update the systemd-boot entries?",
+    "Opération : {action}\n": "Operation: {action}\n",
+    "\nLe menu de démarrage systemd-boot peut être synchronisé avec les "
+    "instantanés présents (ajout des entrées manquantes, mise à jour, "
+    "suppression des entrées orphelines).\n\n"
+    "• Adapter systemd-boot : mettre le menu de démarrage à jour.\n"
+    "• Ne pas adapter : laisser le menu de démarrage inchangé.\n"
+    "• Annuler : ne rien faire.":
+        "\nThe systemd-boot menu can be synchronized with the existing "
+        "snapshots (add missing entries, update, remove orphaned entries).\n\n"
+        "• Update systemd-boot: bring the boot menu up to date.\n"
+        "• Do not update: leave the boot menu unchanged.\n"
+        "• Cancel: do nothing.",
+    "Annuler": "Cancel",
+    "Ne pas adapter": "Do not update",
+    "Adapter systemd-boot": "Update systemd-boot",
+    "Adapter les entrées systemd-boot": "Update the systemd-boot entries",
+    "Créer l'instantané « {name} »": "Create the snapshot “{name}”",
+    "Restaurer « {name} »": "Restore “{name}”",
+    "Supprimer {n} snapshot(s)": "Delete {n} snapshot(s)",
+    "Rétention : garder {keep}": "Retention: keep {keep}",
+    "Garder les %d plus récents, supprimer les autres.":
+        "Keep the %d most recent, delete the others.",
+    "Ajouter les entrées manquantes, mettre à jour, supprimer les entrées "
+    "orphelines.":
+        "Add missing entries, update, remove orphaned entries.",
+    "✓ Entrées systemd-boot synchronisées.":
+        "✓ systemd-boot entries synchronized.",
 }
 
 
@@ -1507,6 +1560,67 @@ def fver_match(fname: str, kver: str) -> bool:
     if m_build and m_build.group(1) not in fname:
         return False
     return True
+
+
+def _kernel_release() -> str:
+    """Version du noyau en cours d'exécution (équivalent `uname -r`)."""
+    try:
+        return os.uname().release
+    except Exception:  # pragma: no cover
+        return ""
+
+
+def _snapshot_module_dirs(base: str) -> list[str]:
+    """Noms de version de noyau présents dans un instantané monté sous `base`.
+
+    On lit les modules (`usr/lib/modules/<ver>/` puis `lib/modules/<ver>/`).
+    L'instantané ne contient PAS le noyau (il vit dans l'ESP /boot), mais il
+    contient bien les modules du noyau présent au moment de l'instantané.
+    """
+    for sub in ("usr/lib/modules", "lib/modules"):
+        d = os.path.join(base, sub)
+        if os.path.isdir(d):
+            try:
+                return sorted(
+                    n for n in os.listdir(d)
+                    if os.path.isdir(os.path.join(d, n)))
+            except OSError:
+                return []
+    return []
+
+
+def snapshot_kernel_info(root: str, snapdir: str, snap_name: str) -> dict:
+    """Comparer le noyau en cours avec le(s) noyau(x) d'un instantané.
+
+    Le noyau de démarrage vit dans la partition EFI (/boot), pas dans le
+    sous-volume racine ; un instantané, lui, ne conserve que les MODULES
+    (`usr/lib/modules/<ver>`).  Restaurer un instantané pris avant une mise
+    à jour du noyau laisse donc la racine restaurée sans les modules du
+    noyau qui démarrera (celui de l'ESP), ce qui peut échouer au boot.
+
+    Renvoie un dict :
+      * current           : version du noyau en cours (`uname -r`)
+      * snapshot_kernels  : liste des versions de noyau présentes dans l'instantané
+      * mismatch          : True si l'instantané n'a AUCUN module du noyau courant
+                            (donc noyau différent → avertissement)
+    """
+    current = _kernel_release()
+    rel = _snaprel(snap_name)
+    base = os.path.join(root, snapdir, rel)
+    kernels = _snapshot_module_dirs(base)
+    if not kernels and not os.path.isdir(base):
+        # Le snapdir peut ne pas être monté comme un simple dossier (quand on
+        # a booté sur le sous-volume snapshots) : montage temporaire de la
+        # racine du FS, comme list_snapshots().
+        try:
+            with fs_root_mount(root) as r:
+                kernels = _snapshot_module_dirs(os.path.join(r, snapdir, rel))
+        except (SystemExit, Exception):  # noqa: BLE001
+            kernels = []
+    mismatch = bool(kernels) and not any(fver_match(k, current)
+                                         for k in kernels)
+    return {"current": current, "snapshot_kernels": kernels,
+            "mismatch": mismatch}
 
 
 def _e2l(path: str) -> str:

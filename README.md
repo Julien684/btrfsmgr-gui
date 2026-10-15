@@ -28,7 +28,7 @@ restauration, et entrées de boot GRUB / systemd-boot.
 
 ```sh
 # Téléchargement et installation direct du paquet depuis GitHub :
-sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.2-1-1-x86_64.eopkg
+sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.3-2-1-x86_64.eopkg
 ```
 
 > **Pourquoi le *release* dans le nom de fichier** : eopkg met en cache les
@@ -92,6 +92,15 @@ Le GUI **réutilise la même logique métier** que le TUI (`btrfsmgr.py`) :
 aucune duplication de code. Dépendance supplémentaire : `python3-gobject`
 + `gtk4` (Solus : `eopkg install python3-gobject`). Lancé depuis le menu
 de programmes, il se réélève en root via `pkexec` s'il est disponible.
+
+Lors d'une **restauration**, si le noyau du système en cours diffère de
+celui de l'instantané (le noyau de démarrage réside dans la partition EFI,
+pas dans l'instantané — qui ne conserve que les modules), le GUI
+**avertit** et laisse le choix : adapter les entrées systemd-boot, ne pas
+y toucher, ou annuler. De même, après une création / suppression /
+rétention, la synchronisation du menu de démarrage est proposée
+explicitement (page *Boot* → *Adapter les entrées systemd-boot*), jamais
+imposée silencieusement.
 
 
 ## Version et mise à jour
@@ -261,7 +270,7 @@ systemd-boot boot entries.
 
 ```sh
 # Direct download and installation of the package from GitHub:
-sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.2-1-1-x86_64.eopkg
+sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.3-2-1-x86_64.eopkg
 ```
 
 > **Why the *release* in the filename**: eopkg caches `.eopkg` files
@@ -325,6 +334,13 @@ The GUI **reuses the same business logic** as the TUI (`btrfsmgr.py`):
 no duplicated code. Extra dependency: `python3-gobject` + `gtk4`
 (Solus: `eopkg install python3-gobject`). When launched from the program
 menu, it re-elevates to root via `pkexec` if available.
+
+On **restore**, if the running kernel differs from the snapshot's kernel
+(the boot kernel lives in the EFI partition, not in the snapshot — which
+only keeps the modules), the GUI **warns** you and lets you choose: update
+the systemd-boot entries, leave them unchanged, or cancel. Likewise, after
+a create / delete / retention, syncing the boot menu is offered explicitly
+(page *Boot* → *Update the systemd-boot entries*), never imposed silently.
 
 
 ## Version and update

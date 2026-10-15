@@ -240,6 +240,33 @@ def ask_yes_no(parent, title, text) -> bool:
                   width=440) is True
 
 
+def ask_boot_action(parent, action: str, body: str = "") -> str | None:
+    """Prévient l'utilisateur qu'une opération touche les instantanés et lui
+    laisse le choix d'adapter (ou non) les entrées de démarrage systemd-boot.
+
+    Renvoie :
+      * "adapt" → adapter le menu systemd-boot après l'opération ;
+      * "skip"  → effectuer l'opération sans toucher au menu de démarrage ;
+      * None    → annuler (ne rien faire).
+    """
+    title = _("Adapter les entrées de démarrage systemd-boot ?")
+    text = _f("Opération : {action}\n", action=action)
+    if body:
+        text += "\n" + body.rstrip() + "\n"
+    text += _(
+        "\nLe menu de démarrage systemd-boot peut être synchronisé avec les "
+        "instantanés présents (ajout des entrées manquantes, mise à jour, "
+        "suppression des entrées orphelines).\n\n"
+        "• Adapter systemd-boot : mettre le menu de démarrage à jour.\n"
+        "• Ne pas adapter : laisser le menu de démarrage inchangé.\n"
+        "• Annuler : ne rien faire.")
+    return _modal(parent, title, _text_body(title, text),
+                  [(_("Annuler"), None, None),
+                   (_("Ne pas adapter"), "skip", None),
+                   (_("Adapter systemd-boot"), "adapt", "suggested")],
+                  width=600)
+
+
 def _entry_row(label_text, default="") -> tuple[Gtk.Box, Gtk.Entry]:
     box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     lb = _label(label_text)
@@ -573,11 +600,17 @@ class BtrfsMgrApp:
             message(self.win, Gtk.MessageType.ERROR, _("Nom vide"),
                     _("Veuillez saisir un nom de snapshot."))
             return
+        boot = ask_boot_action(
+            self.win, _f("Créer l'instantané « {name} »", name=name))
+        if boot is None:
+            return
+        adapt = (boot == "adapt")
         self.set_busy(True)
         run_async(
             lambda: (CORE.create_snapshot(self.root, self.snapdir, name),
                      CORE.sync_bootloader_entries(self.root, self.snapdir,
-                                                  verbose=False)),
+                                                  verbose=False)
+                     if adapt else None),
             lambda r, o: self._create_done(r, o, name))
 
     def _create_done(self, result, output, name):
@@ -602,19 +635,35 @@ class BtrfsMgrApp:
         full = selected[0]
         name = os.path.basename(full)
         at = CORE.boot_subvol(self.root)
-        if ask_yes_no(
-                self.win, _f("Restaurer {name} ?", name=name),
-                _f("Le snapshot prendra la place de « {at} » par échange CoW "
-                   "(deux mv).\nL'ancien sous-volume sera conservé dans "
-                   "{snapdir}/.\n\nRedémarrez ensuite pour booter sur la "
-                   "version restaurée.\n\nCette opération est destructive — "
-                   "poursuivre ?", at=at, snapdir=self.snapdir)):
-            self.set_busy(True)
-            run_async(
-                lambda: (CORE.restore_snapshot(self.root, self.snapdir, name),
-                         CORE.sync_bootloader_entries(self.root, self.snapdir,
-                                                      verbose=False)),
-                lambda r, o: self._restore_done(r, o, name))
+        body = _f("Le snapshot prendra la place de « {at} » par échange CoW "
+                  "(deux mv).\nL'ancien sous-volume sera conservé dans "
+                  "{snapdir}/.\n\nRedémarrez ensuite pour booter sur la "
+                  "version restaurée.\n\nCette opération est destructive.",
+                  at=at, snapdir=self.snapdir)
+        # Prévenir si le noyau a changé depuis l'instantané : le noyau de
+        # démarrage vit dans l'ESP (/boot), pas dans l'instantané — la racine
+        # restaurée peut ne plus avoir les modules du noyau qui démarrera.
+        try:
+            kinfo = CORE.snapshot_kernel_info(self.root, self.snapdir, name)
+        except Exception:  # noqa: BLE001
+            kinfo = None
+        if kinfo and kinfo.get("mismatch"):
+            snap_ks = ", ".join(kinfo.get("snapshot_kernels") or []) or "?"
+            body = _f(CORE.KERNEL_MISMATCH_WARNING,
+                      cur=kinfo.get("current", "?"), snaps=snap_ks) \
+                + "\n\n" + body
+        boot = ask_boot_action(
+            self.win, _f("Restaurer « {name} »", name=name), body)
+        if boot is None:
+            return
+        adapt = (boot == "adapt")
+        self.set_busy(True)
+        run_async(
+            lambda: (CORE.restore_snapshot(self.root, self.snapdir, name),
+                     CORE.sync_bootloader_entries(self.root, self.snapdir,
+                                                  verbose=False)
+                     if adapt else None),
+            lambda r, o: self._restore_done(r, o, name))
 
     def _restore_done(self, result, output, name):
         rc, _out2 = (result or (1, "")) if isinstance(result, tuple) else (0, "")
@@ -641,20 +690,24 @@ class BtrfsMgrApp:
                     _("Sélectionnez un ou plusieurs snapshots dans la liste."))
             return
         confirm = "\n".join(os.path.basename(p) for p in selected)
-        if not ask_yes_no(
-                self.win, _f("Supprimer {n} snapshot(s) ?", n=len(selected)),
-                _("Suppression DÉFINITIVE (sous-volumes) :\n\n") + confirm):
+        boot = ask_boot_action(
+            self.win, _f("Supprimer {n} snapshot(s)", n=len(selected)),
+            _("Suppression DÉFINITIVE (sous-volumes) :\n\n") + confirm)
+        if boot is None:
             return
+        adapt = (boot == "adapt")
         self.set_busy(True)
-        run_async(lambda: self._do_delete(selected),
+        run_async(lambda: self._do_delete(selected, adapt),
                   lambda r, o: self._delete_done(r, o, len(selected)))
 
-    def _do_delete(self, full_paths):
+    def _do_delete(self, full_paths, adapt=True):
         results = []
         for p in full_paths:
             rc, out = CORE.delete_subvol(p)
             results.append((p, rc, out))
-        CORE.sync_bootloader_entries(self.root, self.snapdir, verbose=False)
+        if adapt:
+            CORE.sync_bootloader_entries(self.root, self.snapdir,
+                                         verbose=False)
         return results
 
     def _delete_done(self, result, output, count):
@@ -688,14 +741,20 @@ class BtrfsMgrApp:
                     _("Rien à supprimer"),
                     _("Aucun snapshot à supprimer (déjà ≤ N)."))
             return
-        if ask_yes_no(self.win, _f("Supprimer {n} snapshot(s) ?",
-                                   n=to_del),
-                      _("Garder les %d plus récents, supprimer les autres "
-                        "— poursuivre ?") % keep):
-            self.set_busy(True)
-            run_async(lambda: CORE.prune_snapshots(self.root, self.snapdir,
-                                                    keep),
-                      lambda r, o: self._retention_done(r, o, keep))
+        boot = ask_boot_action(
+            self.win, _f("Rétention : garder {keep}", keep=keep),
+            (_("Garder les %d plus récents, supprimer les autres.") % keep)
+            + "\n" + _f("Supprimer {n} snapshot(s)", n=to_del))
+        if boot is None:
+            return
+        adapt = (boot == "adapt")
+        self.set_busy(True)
+        run_async(
+            lambda: (CORE.prune_snapshots(self.root, self.snapdir, keep),
+                     CORE.sync_bootloader_entries(self.root, self.snapdir,
+                                                  verbose=False)
+                     if adapt else None),
+            lambda r, o: self._retention_done(r, o, keep))
 
     def _retention_done(self, result, output, keep):
         self.set_busy(False)
@@ -929,18 +988,42 @@ class BtrfsMgrApp:
         bsw.set_min_content_height(120)
         page.append(bsw)
 
+        # synchronisation explicite du menu systemd-boot (jamais implicite :
+        # l'utilisateur décide quand le menu de démarrage est modifié).
+        adapt_btn = _button(_("Adapter les entrées systemd-boot"),
+                            self.on_boot_adapt, style="suggested")
+        page.append(adapt_btn)
+
+    def on_boot_adapt(self, *a):
+        if not ask_yes_no(
+                self.win, _("Adapter les entrées de démarrage systemd-boot ?"),
+                _("Ajouter les entrées manquantes, mettre à jour, supprimer "
+                  "les entrées orphelines.")):
+            return
+        self.set_busy(True)
+        run_async(lambda: CORE.sync_bootloader_entries(self.root, self.snapdir,
+                                                       verbose=False),
+                  self._boot_adapt_done)
+
+    def _boot_adapt_done(self, result, output):
+        self.set_busy(False)
+        if output.strip():
+            self.log(output.rstrip())
+        self.log(_("✓ Entrées systemd-boot synchronisées."))
+        self.refresh_boot()
+
     def refresh_boot(self):
-        run_async(lambda: (CORE.detect_bootloader(),
-                           CORE.sync_bootloader_entries(self.root, self.snapdir,
-                                                        verbose=False)),
-                  self._load_boot_done)
+        # On ne synchronise PAS ici (aucune modification implicite du menu de
+        # démarrage) : on se contente de détecter le chargeur et de lister les
+        # entrées déjà présentes.  La synchronisation se fait sur demande
+        # explicite (bouton « Adapter les entrées systemd-boot ») ou après
+        # une opération où l'utilisateur a choisi de l'adapter.
+        run_async(CORE.detect_bootloader, self._load_boot_done)
 
     def _load_boot_done(self, result, output):
         if output.strip():
             self.log(output.rstrip())
-        if result is None:
-            return
-        bootloader, _unused = result
+        bootloader = result or "unknown"
         self.lbl_boot_loader.set_text(_f("Chargeur de boot : {bl}", bl=bootloader))
 
         # lister les entrées btrfsmgr-*.conf (systemd-boot)

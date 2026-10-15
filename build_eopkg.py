@@ -26,8 +26,8 @@ SRC_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".")
 OUT_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else SRC_DIR
 
 PACKAGE_NAME   = "btrfsmgr-gui"
-VERSION        = "1.1.2"   # must match VERSION in btrfsmgr.py
-RELEASE        = 1   # bump on every republish with the same VERSION — eopkg caches by FILENAME, not by content hash; same name = stale cache
+VERSION        = "1.1.3"   # must match VERSION in btrfsmgr.py
+RELEASE        = 2   # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 1
 DIST_RELEASE   = 1
 ARCH           = "x86_64"
 DIST_NAME      = "Solus"
@@ -62,13 +62,13 @@ OUT_FILENAME = f"{PACKAGE_NAME}-{VERSION}-{RELEASE}-{DIST_RELEASE}-{ARCH}.eopkg"
 # Description française (métadonnées XML — accents préservés en UTF-8).
 _FR_SUMMARY = ("Gestionnaire d'instantanés BTRFS en interface graphique — créer, "
                "lister, restaurer et automatiser les instantanés de sous-volumes BTRFS")
-_FR_DESCRIPTION = """btrfsmgr-gui est une interface graphique (GTK3) de gestion des instantanés de
+_FR_DESCRIPTION = """btrfsmgr-gui est une interface graphique (GTK4) de gestion des instantanés de
 sous-volumes BTRFS sous Linux. Elle permet de créer, lister, restaurer et
 supprimer des instantanés ; de planifier des instantanés automatiques via des
 timers systemd avec une politique de rétention ; et de générer des entrées de
 démarrage (GRUB / systemd-boot) pour booter directement sur un instantané. La
 restauration est un échange CoW (deux renommages) — aucune donnée n'est copiée.
-Réutilise la logique métier de btrfsmgr (TUI). Nécessite btrfs-progs, GTK3 /
+Réutilise la logique métier de btrfsmgr (TUI). Nécessite btrfs-progs, GTK4 /
 PyGObject et Python 3.8+. Non officiel ; non affilié à Solus ni au projet BTRFS."""
 
 
@@ -182,13 +182,13 @@ def build():
     <Package>
         <Name>{PACKAGE_NAME}</Name>
         <Summary xml:lang="en">{a("BTRFS snapshot manager GUI - create, list, restore, and automate BTRFS subvolume snapshots")}</Summary>
-        <Description xml:lang="en">{a("""btrfsmgr-gui is a GTK3 graphical tool for managing BTRFS subvolume snapshots on Linux.
+        <Description xml:lang="en">{a("""btrfsmgr-gui is a GTK4 graphical tool for managing BTRFS subvolume snapshots on Linux.
 It supports creating, listing, restoring, and deleting snapshots; scheduling
 automatic snapshots via systemd timers with a retention policy; and generating
 boot entries (GRUB / systemd-boot) so you can boot directly into a snapshot.
 Restore is a CoW swap (two renames) - no data is copied.
 It reuses the business logic of btrfsmgr (TUI).
-Requires btrfs-progs, GTK3 / PyGObject and Python 3.8+.
+Requires btrfs-progs, GTK4 / PyGObject and Python 3.8+.
 Unofficial; not affiliated with Solus or the BTRFS project.""")}</Description>
         <Summary xml:lang="fr">{_FR_SUMMARY}</Summary>
         <Description xml:lang="fr">{_FR_DESCRIPTION}</Description>
