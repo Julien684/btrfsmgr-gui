@@ -63,7 +63,7 @@ APP = "btrfsmgr"
 # ---------------------------------------------------------------------------
 # Version / mise à jour
 # ---------------------------------------------------------------------------
-VERSION = "1.1.4"          # version locale du logiciel (comparée aux tags Gitea)
+VERSION = "1.1.5"          # version locale du logiciel (comparée aux tags Gitea)
 PROJECT_REPO = "Linuxon/btrfsmgr-gui"
 PROJECT_REPO_URL = "https://depoa.julien68.fr/Linuxon/btrfsmgr-gui.git"
 PROJECT_API = "https://depoa.julien68.fr/api/v1/repos/Linuxon/btrfsmgr-gui"
@@ -171,6 +171,15 @@ _EN = {
     "Nombre d'instantanés à conserver": "Number of snapshots to keep",
     "Au démarrage de la machine ({delay} min après le boot)":
         "On machine boot ({delay} min after boot)",
+    "Au démarrage de la machine ({delay} min après le boot, un seul par jour)":
+        "On machine boot ({delay} min after boot, one per day)",
+    "N'effectuer qu'un seul instantané par jour "
+    "(ignoré si un instantané du jour existe déjà) ?":
+        "Create only one snapshot per day "
+        "(skipped if a snapshot for today already exists)?",
+    "Un seul instantané par jour (sinon un par démarrage)":
+        "Only one snapshot per day (otherwise one per boot)",
+    " (un seul par jour)": " (one per day)",
     "Créer un timer systemd '{tag}'\n  Planning : {plan}\n  Rétention: "
     "{keep} instantané(s)\n  Cible    : {root}/{snapdir}":
         "Create a systemd timer '{tag}'\n  Schedule : {plan}\n  Retention: "
@@ -319,16 +328,19 @@ DEFAULT_SNAPDIR = "snapshots"
 # l'unité systemd pour créer + pruner les snapshots.
 _SNAP_SCRIPT_BODY = r"""#!/usr/bin/env bash
 # btrfsmgr-snap.sh — créer un snapshot BTRFS + prune (conserver les N derniers).
-# Usage: btrfsmgr-snap.sh <root> <snapdir> <name> <keep>
+# Usage: btrfsmgr-snap.sh <root> <snapdir> <name> <keep> [once_per_day]
+# once_per_day=1 → n'effectue (au plus) qu'un instantané par jour: si un
+# instantané daté d'aujourd'hui existe déjà, on ne crée rien.
 set -euo pipefail
 
 ROOT="${1:-}"
 SNAPDIR="${2:-snapshots}"
 NAME="${3:-}"
 KEEP="${4:-7}"
+ONCE_PER_DAY="${5:-0}"
 
 if [[ -z "$ROOT" || -z "$NAME" ]]; then
-    echo "Usage: $0 <root> <snapdir> <name> <keep>" >&2
+    echo "Usage: $0 <root> <snapdir> <name> <keep> [once_per_day]" >&2
     exit 1
 fi
 
@@ -445,6 +457,18 @@ prune_snapshots() {
 
 ensure_snapdir "$ROOT" "$SNAPDIR"
 vis="$ROOT/$SNAPDIR"
+
+# Un seul instantané par jour: si un instantané daté d'aujourd'hui est déjà
+# présent, on s'arrête — le déclenchement au démarrage est alors capé à un
+# instantané par jour (un démarrage supplémentaire le même jour est ignoré).
+if [[ "$ONCE_PER_DAY" == "1" ]]; then
+    _day="$(date +%Y%m%d)"
+    if compgen -G "$vis/*$_day*" >/dev/null 2>&1; then
+        echo "[btrfsmgr-snap] instantané du jour ($_day) déjà présent — ignoré"
+        exit 0
+    fi
+fi
+
 target="$vis/$NAME"
 if [[ -e "$target" ]]; then
     echo "ERREUR: $target existe déjà" >&2
@@ -1318,13 +1342,16 @@ def install_snap_script() -> str:
 
 def write_timer_files(root: str, snapdir: str, tag: str, schedule: str,
                       keep: int, boot: bool = False,
-                      boot_delay: int = 5) -> str:
+                      boot_delay: int = 5, once_per_day: bool = False) -> str:
     """Create service + timer units for automatic snapshots with retention.
 
     `schedule` is an OnCalendar value (e.g. "daily", "weekly", "hourly-*",
     "Mon *-*-* 03:00:00").  `keep` is the number of snapshots to retain.
     Si `boot` est vrai, le timer tourne `boot_delay` minutes après le
-    démarrage (OnBootSec) et `schedule` est ignoré.
+    démarrage (OnBootSec) et `schedule` est ignoré.  Si `once_per_day` est
+    vrai (pertinent seulement en mode `boot`), le script n'effectue pas de
+    nouvel instantané si un instantané du jour existe déjà — au plus un
+    instantané par jour.
     """
     unit_name = _snap_unit_name(root, snapdir, tag)
     svc = f"{unit_name}.service"
@@ -1336,13 +1363,14 @@ def write_timer_files(root: str, snapdir: str, tag: str, schedule: str,
     # PAS comme des spécificateurs: le script reçoit "%Y%m%d-%H%M%S" et
     # l'expand lui-même avec `date` (timestamp de l'exécution).
     script_path = install_snap_script()
+    once_flag = "1" if (boot and once_per_day) else "0"
     svc_content = f"""[Unit]
 Description={APP} — snapshot btrfs de {root} ({tag})
 DefaultDependencies=no
 
 [Service]
 Type=oneshot
-ExecStart={script_path} {root} {snapdir} {tag}-%%Y%%m%%d-%%H%%M%%S {keep}
+ExecStart={script_path} {root} {snapdir} {tag}-%%Y%%m%%d-%%H%%M%%S {keep} {once_flag}
 RemainAfterExit=no
 User=root
 """
@@ -1352,6 +1380,8 @@ User=root
     if boot:
         _trigger = f"OnBootSec={boot_delay}min"
         _plan = f"Au démarrage ({boot_delay} min après le boot)"
+        if once_per_day:
+            _plan += " — un seul instantané par jour"
     else:
         _trigger = f"OnCalendar={schedule}"
         _plan = schedule
@@ -2122,6 +2152,7 @@ class TUI:
         # -- 2e choix: détail selon la fréquence ---------------------------
         boot = False
         boot_delay = 5
+        once_per_day = False
         schedule = ""
         if freq == "daily":
             # Chaque jour: heure précise OU au démarrage.
@@ -2143,6 +2174,11 @@ class TUI:
                         break
                     except ValueError:
                         print(_("Nombre invalide"))
+                # En mode démarrage: proposer de n'effectuer qu'un seul
+                # instantané par jour (skip si un instantané du jour existe).
+                once_per_day = self.ask_yn(
+                    _("N'effectuer qu'un seul instantané par jour "
+                      "(ignoré si un instantané du jour existe déjà) ?"))
             elif when == "1":
                 hour = self._ask_hour()
             else:
@@ -2186,8 +2222,12 @@ class TUI:
         tag = self.ask(_("Nom du plan (ex. daily, weekly)"), freq)
 
         if boot:
-            plan_desc = _f("Au démarrage de la machine ({delay} min après le boot)",
-                           delay=boot_delay)
+            if once_per_day:
+                plan_desc = _f("Au démarrage de la machine ({delay} min après "
+                               "le boot, un seul par jour)", delay=boot_delay)
+            else:
+                plan_desc = _f("Au démarrage de la machine ({delay} min "
+                               "après le boot)", delay=boot_delay)
         else:
             plan_desc = f"OnCalendar={schedule}"
         self.confirm(
@@ -2198,7 +2238,8 @@ class TUI:
                tag=tag, plan=plan_desc, keep=keep,
                root=self.root, snapdir=self.snapdir))
         write_timer_files(self.root, self.snapdir, tag, schedule, keep,
-                          boot=boot, boot_delay=boot_delay)
+                          boot=boot, boot_delay=boot_delay,
+                          once_per_day=once_per_day)
         self.pause()
 
     def do_remove_timer(self):

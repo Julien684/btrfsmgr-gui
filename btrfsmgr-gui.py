@@ -802,7 +802,8 @@ class BtrfsMgrApp:
         fb.append(rhour)
 
         # au démarrage
-        rb_boot, self.chk_boot, self.spin_delay = self._boot_options()
+        rb_boot, self.chk_boot, self.spin_delay, self.chk_once = \
+            self._boot_options()
         fb.append(rb_boot)
 
         # rétention
@@ -835,14 +836,24 @@ class BtrfsMgrApp:
         chk = Gtk.CheckButton(label=_("Au démarrage de la machine "
                                       "(au lieu d'un horaire)"))
         r, spin = _spin_row(_("Minutes après le démarrage"), 0, 1440, 5)
+        # Option liée au mode démarrage: n'effectuer qu'un seul instantané
+        # par jour (sinon un instantané à chaque démarrage).
+        once_chk = Gtk.CheckButton(
+            label=_("Un seul instantané par jour (sinon un par démarrage)"))
         spin.set_sensitive(False)
         r.set_sensitive(False)
-        chk.connect("toggled",
-                    lambda c: (r.set_sensitive(c.get_active()),
-                               spin.set_sensitive(c.get_active())))
+        once_chk.set_sensitive(False)
+
+        def _on_boot_toggle(c):
+            active = c.get_active()
+            for w in (r, spin, once_chk):
+                w.set_sensitive(active)
+
+        chk.connect("toggled", _on_boot_toggle)
         box.append(chk)
         box.append(r)
-        return box, chk, spin
+        box.append(once_chk)
+        return box, chk, spin, once_chk
 
     def _sync_day_visibility(self, *a):
         active = self.freq.get_selected()
@@ -853,6 +864,7 @@ class BtrfsMgrApp:
         freq = self.freq.get_selected()        # 0=day 1=week 2=month
         boot = self.chk_boot.get_active()
         boot_delay = self.spin_delay.get_value_as_int()
+        once_per_day = self.chk_once.get_active() if boot else False
         keep = self.spin_keep.get_value_as_int()
         hour = self.spin_hour.get_value_as_int()
 
@@ -882,6 +894,8 @@ class BtrfsMgrApp:
 
         plan = (_("Au démarrage (%d min après le boot)") % boot_delay) if boot \
             else f"OnCalendar={schedule}"
+        if boot and once_per_day:
+            plan += _(" (un seul par jour)")
         if not ask_yes_no(
                 self.win,
                 _f("Créer le timer systemd '{tag}' ?", tag=tag),
@@ -895,7 +909,8 @@ class BtrfsMgrApp:
         run_async(
             lambda: CORE.write_timer_files(self.root, self.snapdir, tag,
                                            schedule, keep, boot=boot,
-                                           boot_delay=boot_delay),
+                                           boot_delay=boot_delay,
+                                           once_per_day=once_per_day),
             lambda r, o: self._schedule_create_done(r, o, tag))
 
     def _schedule_create_done(self, result, output, tag):
