@@ -1018,13 +1018,20 @@ class BtrfsMgrApp:
         # entrées déjà présentes.  La synchronisation se fait sur demande
         # explicite (bouton « Adapter les entrées systemd-boot ») ou après
         # une opération où l'utilisateur a choisi de l'adapter.
-        run_async(CORE.detect_bootloader, self._load_boot_done)
+        run_async(self._detect_boot, self._load_boot_done)
+
+    @staticmethod
+    def _detect_boot():
+        """Monter /boot puis détecter le chargeur (sinon « Inconnu » sur Solus)."""
+        CORE.ensure_boot_mounted()
+        return CORE.detect_bootloader()
 
     def _load_boot_done(self, result, output):
         if output.strip():
             self.log(output.rstrip())
         bootloader = result or "unknown"
-        self.lbl_boot_loader.set_text(_f("Chargeur de boot : {bl}", bl=bootloader))
+        self.lbl_boot_loader.set_text(
+            _f("Chargeur de boot : {bl}", bl=CORE.bootloader_display(bootloader)))
 
         # lister les entrées btrfsmgr-*.conf (systemd-boot)
         entries = "/boot/loader/entries"
@@ -1083,7 +1090,7 @@ class BtrfsMgrApp:
         self.refresh_boot()
 
     def refresh_info(self):
-        run_async(lambda: (CORE.detect_bootloader(),
+        run_async(lambda: (self._detect_boot(),
                            CORE.default_subvol(self.root),
                            CORE.list_timers(),
                            CORE.list_snapshots(self.root, self.snapdir),
@@ -1097,7 +1104,7 @@ class BtrfsMgrApp:
             return
         bootloader, default_sv, timers, snaps, (dfrc, dfout) = result
         self.lbl_version.set_text(f"{APP} {VERSION}")
-        self.lbl_bootloader.set_text(str(bootloader))
+        self.lbl_bootloader.set_text(CORE.bootloader_display(bootloader))
         self.lbl_default_subvol.set_text((default_sv or {}).get("full", "?"))
         self.lbl_snap_count.set_text(str(len(snaps or [])))
         self.lbl_timer_count.set_text(str(len(timers or [])))

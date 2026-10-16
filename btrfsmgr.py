@@ -63,7 +63,7 @@ APP = "btrfsmgr"
 # ---------------------------------------------------------------------------
 # Version / mise à jour
 # ---------------------------------------------------------------------------
-VERSION = "1.1.3"          # version locale du logiciel (comparée aux tags Gitea)
+VERSION = "1.1.4"          # version locale du logiciel (comparée aux tags Gitea)
 PROJECT_REPO = "Linuxon/btrfsmgr-gui"
 PROJECT_REPO_URL = "https://depoa.julien68.fr/Linuxon/btrfsmgr-gui.git"
 PROJECT_API = "https://depoa.julien68.fr/api/v1/repos/Linuxon/btrfsmgr-gui"
@@ -243,6 +243,7 @@ _EN = {
     "Subvolume par défaut  : {dv}": "Default subvolume    : {dv}",
     "Snapshots existants   : {n}": "Existing snapshots   : {n}",
     "Timers {app} actifs  : {n}": "Active {app} timers  : {n}",
+    "Inconnu": "unknown",
 
     # --- erreurs / divers ------------------------------------------------------
     "ERREUR: exécuter en root:  sudo btrfsmgr": "ERROR: run as root:  sudo btrfsmgr",
@@ -1535,11 +1536,40 @@ def restore_snapshot(root: str, snapdir: str, snap_name: str) -> int:
 
 
 def detect_bootloader() -> str:
-    if os.path.isdir("/boot/loader"):          # systemd-boot / efibootmgr
-        return "systemd-boot"
-    if os.path.isdir("/etc/grub"):
-        return "grub"
+    """Identifier le chargeur d'amorçage actif.
+
+    La détection doit rester fiable même quand la partition EFI n'est pas
+    montée sur /boot (Solus, Fedora…) ou quand le chargeur est installé
+    ailleurs.  Ordre : systemd-boot d'abord (il gagne sur GRUB quand les
+    deux sont présents), puis GRUB, sinon "unknown".
+    """
+    # systemd-boot : dossier loader/, ou gestionnaire EFI systemd.
+    for p in ("/boot/loader", "/efi/loader", "/boot/efi/loader",
+              "/boot/efi/EFI/systemd", "/efi/EFI/systemd",
+              "/sys/firmware/efi/efi/systemd"):
+        if os.path.isdir(p):
+            return "systemd-boot"
+    # GRUB : configuration présente à l'un des emplacements usuels.
+    for p in ("/etc/grub", "/etc/grub.d", "/etc/default/grub",
+              "/boot/grub/grub.cfg", "/boot/grub2/grub.cfg",
+              "/boot/grub/menu.lst", "/boot/efi/EFI/*/grub.cfg"):
+        import glob
+        if glob.glob(p):
+            return "grub"
     return "unknown"
+
+
+# Libellés affichés pour chaque chargeur (localisés via _()).
+_BOOTLOADER_LABELS = {
+    "systemd-boot": "systemd-boot",
+    "grub": "GRUB",
+    "unknown": "Inconnu",
+}
+
+
+def bootloader_display(bl: str) -> str:
+    """Libellé localisé du chargeur, prêt à afficher (TUI + GUI)."""
+    return _(_BOOTLOADER_LABELS.get(bl or "unknown", "Inconnu"))
 
 
 def fver_match(fname: str, kver: str) -> bool:
@@ -2346,13 +2376,16 @@ class TUI:
         self.pause()
 
     def do_info(self):
+        # Monter /boot avant la détection (sinon « Inconnu » sur Solus, où
+        # la partition EFI n'est pas montée par défaut).
+        ensure_boot_mounted()
         bl = detect_bootloader()
         dv = default_subvol(self.root)
         timers = list_timers()
         snaps = list_snapshots(self.root, self.snapdir)
         items = [
             _f("Version              : {app} {ver}", app=APP, ver=VERSION),
-            _f("Chargeur de boot      : {bl}", bl=bl),
+            _f("Chargeur de boot      : {bl}", bl=bootloader_display(bl)),
             _f("Subvolume par défaut  : {dv}", dv=dv['full'] or '?'),
             _f("Snapshots existants   : {n}", n=len(snaps)),
             _f("Timers {app} actifs  : {n}", app=APP, n=len(timers)),
