@@ -26,3 +26,6 @@ test_*.sh
 .idea/
 *.swp
 .DS_Store
+
+# Rust
+/target/

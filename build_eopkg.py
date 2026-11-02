@@ -26,8 +26,8 @@ SRC_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".")
 OUT_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else SRC_DIR
 
 PACKAGE_NAME   = "btrfsmgr-gui"
-VERSION        = "1.1.5"   # must match VERSION in btrfsmgr.py
-RELEASE        = 4   # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 3
+VERSION        = "1.1.6"   # must match VERSION in btrfsmgr.py
+RELEASE        = 8   # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 4
 DIST_RELEASE   = 1
 ARCH           = "x86_64"
 DIST_NAME      = "Solus"
@@ -43,8 +43,10 @@ PART_OF        = "system.utilities"
 # On Solus, /bin is a symlink to /usr/bin, so we install to usr/bin.
 FILE_LIST = [
     # (dest_path, src_rel_path, mode)
-    ("usr/bin/btrfsmgr",                          "btrfsmgr.py",         0o755),
-    ("usr/bin/btrfsmgr-gui",                      "btrfsmgr-gui.py",     0o755),
+    # Binaire Rust/Qt6 unique (la branche rust-migration remplace les scripts
+    # Python) ; le paquet ne fournit plus /usr/bin/btrfsmgr, qui appartient au
+    # paquet btrfsmgr (TUI).
+    ("usr/bin/btrfsmgr-gui",                      "target/release/btrfsmgr-gui", 0o755),
     ("usr/share/applications/btrfsmgr-gui.desktop", "btrfsmgr-gui.desktop", 0o644),
     ("usr/share/polkit-1/actions/btrfsmgr-gui.policy", "btrfsmgr-gui.policy", 0o644),
     ("usr/share/doc/btrfsmgr-gui/README.md",      "README.md",           0o644),
@@ -68,8 +70,9 @@ supprimer des instantanés ; de planifier des instantanés automatiques via des
 timers systemd avec une politique de rétention ; et de générer des entrées de
 démarrage (GRUB / systemd-boot) pour booter directement sur un instantané. La
 restauration est un échange CoW (deux renommages) — aucune donnée n'est copiée.
-Réutilise la logique métier de btrfsmgr (TUI). Nécessite btrfs-progs, GTK4 /
-PyGObject et Python 3.8+. Non officiel ; non affilié à Solus ni au projet BTRFS."""
+Interface Qt6 écrite en Rust, cœur partagé avec btrfsmgr. Nécessite
+btrfs-progs, systemd et qt6-base. Non officiel ; non affilié à Solus ni au
+projet BTRFS."""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -182,13 +185,13 @@ def build():
     <Package>
         <Name>{PACKAGE_NAME}</Name>
         <Summary xml:lang="en">{a("BTRFS snapshot manager GUI - create, list, restore, and automate BTRFS subvolume snapshots")}</Summary>
-        <Description xml:lang="en">{a("""btrfsmgr-gui is a GTK4 graphical tool for managing BTRFS subvolume snapshots on Linux.
+        <Description xml:lang="en">{a("""btrfsmgr-gui is a Qt6 graphical tool for managing BTRFS subvolume snapshots on Linux.
 It supports creating, listing, restoring, and deleting snapshots; scheduling
 automatic snapshots via systemd timers with a retention policy; and generating
 boot entries (GRUB / systemd-boot) so you can boot directly into a snapshot.
 Restore is a CoW swap (two renames) - no data is copied.
-It reuses the business logic of btrfsmgr (TUI).
-Requires btrfs-progs, GTK4 / PyGObject and Python 3.8+.
+Written in Rust (Qt6), sharing the btrfsmgr core.
+Requires btrfs-progs, systemd and qt6-base.
 Unofficial; not affiliated with Solus or the BTRFS project.""")}</Description>
         <Summary xml:lang="fr">{_FR_SUMMARY}</Summary>
         <Description xml:lang="fr">{_FR_DESCRIPTION}</Description>

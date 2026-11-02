@@ -1,0 +1,23 @@
+[package]
+name = "btrfsmgr-gui"
+version = "1.1.6"
+edition = "2021"
+rust-version = "1.85"
+description = "Gestionnaire graphique (Qt6) des instantanés BTRFS"
+license = "GPL-3.0-or-later"
+
+[[bin]]
+name = "btrfsmgr-gui"
+path = "src/main.rs"
+
+[dependencies]
+qtrs = "0.5.9"
+cxx = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+strip = true

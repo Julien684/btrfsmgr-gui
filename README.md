@@ -13,8 +13,8 @@
 > cela en tête avant de vous y fier.
 >
 
-Gestionnaire d'instantanés BTRFS pour Linux : TUI sans dépendance
-(standard Python uniquement), timers systemd avec rétention,
+Gestionnaire d'instantanés BTRFS pour Linux : TUI écrite en Rust
+(binaire unique, sans dépendance), timers systemd avec rétention,
 restauration, et entrées de boot GRUB / systemd-boot.
 
 > **Non officiel / Non affilié à Solus ni à BTRFS. Codé par Vibe. 
@@ -25,8 +25,8 @@ restauration, et entrées de boot GRUB / systemd-boot.
 ### Installation via paquet eopkg (Solus)
 
 ```sh
-# Téléchargement et installation direct du paquet depuis Gitea (depoa) :
-sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.5-4-1-x86_64.eopkg
+# Téléchargement et installation direct du paquet depuis GitHub :
+sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.6-8-1-x86_64.eopkg
 ```
 
 > **Pourquoi le *release* dans le nom de fichier** : eopkg met en cache les
@@ -40,7 +40,7 @@ sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-g
 ### Installation via eopkg du dépôt Linuxon
 
 ```sh
-# Téléchargement et installation direct du paquet depuis Github :
+# Téléchargement et installation direct du paquet depuis GitHub :
 sudo eopkg install btrfsmgr-gui
 ```
 
@@ -55,17 +55,18 @@ sudo eopkg remove btrfsmgr-gui
 > **Testé et fonctionnel** : l'installation et la désinstallation via eopkg
 > ont été vérifiées sur Solus 4.9 (eopkg 5.0.0).
 
-### Installation via le script (toute distribution Linux)
+### Depuis les sources (Rust)
 
 ```sh
 # 1. Cloner le dépôt
 git clone https://github.com/Julien684/btrfsmgr-gui.git
 cd btrfsmgr-gui
 
-# 2. Installer
-sudo ./install.sh
+# 2. Compiler et installer
+cargo build --release
+sudo install -Dm755 target/release/btrfsmgr-gui /usr/local/bin/btrfsmgr-gui
 ```
-### Désinstallation via le script (toute distribution Linux)
+### Désinstallation (toute distribution Linux)
 
 ```sh
 sudo btrfsmgr uninstall
@@ -76,29 +77,29 @@ sudo btrfsmgr                 # gère le sous-volume /
 sudo btrfsmgr /mnt/backup     # gère un autre sous-volume BTRFS
 ```
 
-Dépendances : `btrfs-progs`, `python3 ≥ 3.8`, `systemd` (timers).
+Dépendances : `btrfs-progs`, `systemd` (timers).
 
 La restauration ne nécessite **ni rsync ni copie** : c'est un swap CoW
 de sous-volumes (deux `mv`).
 
-## Interface graphique (GTK4)
+## Interface graphique (Qt6)
 
 En plus du TUI, `btrfsmgr-gui` offre la même gestion en interface
-graphique native (GTK4 / PyGObject) : navigation par pages (Général,
+graphique native (Qt6) : navigation par pages (Général,
 Snapshots, Automatisation, Boot), listes cliquables, boutons d'action et
 un panneau de journal qui reprend la sortie console du TUI. Les opérations
 sont exécutées hors du fil d'affichage (pas de gel de la fenêtre).
 
-![Interface graphique btrfsmgr-gui — page Snapshots](gui-screenshot.png)
+![Interface graphique btrfsmgr-gui — page Général](gui-screenshot.png)
 
 ```sh
 sudo btrfsmgr-gui                 # gère le sous-volume /
 sudo btrfsmgr-gui /mnt/backup     # gère un autre sous-volume BTRFS
 ```
 
-Le GUI **réutilise la même logique métier** que le TUI (`btrfsmgr.py`) :
-aucune duplication de code. Dépendance supplémentaire : `python3-gobject`
-+ `gtk4` (Solus : `eopkg install python3-gobject`). Lancé depuis le menu
+Le GUI **partage le cœur Rust** du TUI (copie synchronisée par
+`tools/sync-core.sh`) : aucune duplication de logique. Dépendance
+supplémentaire : `qt6-base`. Lancé depuis le menu
 de programmes, il se réélève en root via `pkexec` s'il est disponible.
 
 Lors d'une **restauration**, si le noyau du système en cours diffère de
@@ -127,13 +128,10 @@ sudo btrfsmgr update
 
 * interroge les tags du dépôt Gitea (API Gitea, sinon `git ls-remote`) ;
 * compare la version distante à la version locale ;
-* si une version **supérieure** est disponible, il la propose et, sur
-  confirmation, clône cette version (clone temporaire) puis relance
-  `install.sh` — le dépôt de travail local n'est pas modifié ;
-* sinon il affiche « Vous êtes déjà à jour » (réinstallation locale
-  possible) ;
-* hors ligne ou dépôt sans tag, il relance l'`install.sh` local
-  (comportement historique) : `btrfsmgr update /chemin/vers/le/depot`.
+* si une version **supérieure** est disponible, il l'affiche et indique la
+  commande de mise à jour : `sudo eopkg upgrade btrfsmgr-gui` ;
+* sinon il affiche « Vous êtes déjà à jour » ;
+* hors ligne ou dépôt sans tag, il l'indique et renvoie un code d'erreur.
 
 ## Fonctionnalités
 
@@ -264,8 +262,8 @@ Crée `//@snapshots/test` puis ne garde que les 3 plus récents.
 > relying on it.
 >
 
-BTRFS snapshot manager for Linux: dependency-free TUI (standard Python
-only), systemd timers with retention, restoration, and GRUB /
+BTRFS snapshot manager for Linux: TUI written in Rust
+(single binary, no runtime dependency), systemd timers with retention, restoration, and GRUB /
 systemd-boot boot entries.
 
 > **Unofficial / Not affiliated with Solus or BTRFS. Vibe coded.
@@ -276,8 +274,8 @@ systemd-boot boot entries.
 ### Installation via eopkg package (Solus)
 
 ```sh
-# Direct download and installation of the package from Gitea (depoa):
-sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.5-4-1-x86_64.eopkg
+# Direct download and installation of the package from GitHub:
+sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-gui-1.1.6-8-1-x86_64.eopkg
 ```
 
 > **Why the *release* in the filename**: eopkg caches `.eopkg` files
@@ -295,7 +293,7 @@ sudo eopkg install https://github.com/Julien684/btrfsmgr-gui/raw/main/btrfsmgr-g
 sudo eopkg install btrfsmgr-gui
 ```
 
-> More information here [eopkg-repo - GitHub](https://github.com/Julien684/eopkg-repo)
+> More information here [eopkg-repo - Github](https://github.com/Julien684/eopkg-repo)
 
 ### Uninstallation via eopkg package (Solus)
 ```sh
@@ -306,17 +304,18 @@ sudo eopkg remove btrfsmgr-gui
 > **Tested and working**: installation and uninstallation via eopkg
 > have been verified on Solus 4.9 (eopkg 5.0.0).
 
-### Installation via script (any Linux distribution)
+### From source (Rust)
 
 ```sh
 # 1. Clone the repository
 git clone https://github.com/Julien684/btrfsmgr-gui.git
 cd btrfsmgr-gui
 
-# 2. Install
-sudo ./install.sh
+# 2. Build and install
+cargo build --release
+sudo install -Dm755 target/release/btrfsmgr-gui /usr/local/bin/btrfsmgr-gui
 ```
-### Uninstallation via script (any Linux distribution)
+### Uninstallation (any Linux distribution)
 
 ```sh
 sudo btrfsmgr uninstall
@@ -327,29 +326,28 @@ sudo btrfsmgr                 # manages the / subvolume
 sudo btrfsmgr /mnt/backup     # manages another BTRFS subvolume
 ```
 
-Dependencies: `btrfs-progs`, `python3 ≥ 3.8`, `systemd` (timers).
+Dependencies: `btrfs-progs`, `systemd` (timers).
 
 Restoration requires **no rsync and no copy**: it is a CoW subvolume
 swap (two `mv` commands).
 
-## Graphical interface (GTK4)
+## Graphical interface (Qt6)
 
 Besides the TUI, `btrfsmgr-gui` provides the same management through a
-native graphical interface (GTK4 / PyGObject): page-based navigation
+native graphical interface (Qt6): page-based navigation
 (General, Snapshots, Scheduling, Boot), clickable lists, action buttons,
 and a log panel that mirrors the TUI's console output. Operations run off
 the UI thread (the window never freezes).
 
-![btrfsmgr-gui graphical interface — Snapshots page](gui-screenshot.png)
+![btrfsmgr-gui graphical interface — General page](gui-screenshot.png)
 
 ```sh
 sudo btrfsmgr-gui                 # manages the / subvolume
 sudo btrfsmgr-gui /mnt/backup     # manages another BTRFS subvolume
 ```
 
-The GUI **reuses the same business logic** as the TUI (`btrfsmgr.py`):
-no duplicated code. Extra dependency: `python3-gobject` + `gtk4`
-(Solus: `eopkg install python3-gobject`). When launched from the program
+The GUI **shares the TUI's Rust core** (copy kept in sync by
+`tools/sync-core.sh`): no duplicated logic. Extra dependency: `qt6-base`. When launched from the program
 menu, it re-elevates to root via `pkexec` if available.
 
 On **restore**, if the running kernel differs from the snapshot's kernel
@@ -376,14 +374,11 @@ sudo btrfsmgr update
 
 * queries the repository tags (API, otherwise `git ls-remote`);
 * compares the remote version to the local version;
-* if a **higher** version is available, it offers it and, upon
-  confirmation, clones that version (temporary clone) then re-runs
-  `install.sh` — your local working repository is not modified;
-* otherwise it displays "You are already up to date" (local
-  reinstallation is still possible);
-* offline, or if the repository has no tags, it falls back to the
-  local `install.sh` (historical behavior):
-  `btrfsmgr update /path/to/the/repository`.
+* if a **higher** version is available, it prints it and the upgrade
+  command: `sudo eopkg upgrade btrfsmgr-gui`;
+* otherwise it displays "You are already up to date";
+* offline, or if the repository has no tags, it says so and returns an
+  error code.
 
 ## Features
 
