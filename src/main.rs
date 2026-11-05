@@ -518,8 +518,14 @@ Cette opération est destructive.",
                 once_per_day,
             )
         });
+        // Une automatisation créée doit aussi ajouter les entrées de boot des
+        // instantanés déjà présents (sinon la liste reste vide jusqu'au
+        // premier déclenchement du timer).
+        let (root, sd) = (self.root.clone(), self.snapdir.clone());
+        self.run_core(move || sync_bootloader_entries(&root, &sd, true));
         self.log_line(&format!("✓ Timer '{tag}' créé et activé."));
         self.refresh_timers();
+        self.refresh_boot();
         self.refresh_info();
     }
 
