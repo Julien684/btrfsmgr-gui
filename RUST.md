@@ -52,7 +52,7 @@ Crochets de test (sans effet en usage normal) :
 
 ## État
 
-* L'`.eopkg` Rust/Qt6 est construit : `btrfsmgr-gui-1.1.6-9-1-x86_64.eopkg`
+* L'`.eopkg` Rust/Qt6 est construit : `btrfsmgr-gui-1.1.6-11-1-x86_64.eopkg`
   (binaire + `.desktop` + policy polkit ; ne fournit plus `/usr/bin/btrfsmgr`,
   qui appartient au paquet TUI).
 * `install.sh` a été retiré : installation depuis les sources via

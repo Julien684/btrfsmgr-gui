@@ -1157,6 +1157,15 @@ fn relaunch_root(args: &[String]) -> ! {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Mode headless utilisé par le script d'instantané quand SEUL le paquet
+    // GUI est installé (il ne fournit plus /usr/bin/btrfsmgr) :
+    //   btrfsmgr-gui sync <root> --snapdir <dir>
+    if args.iter().any(|a| a == "sync") {
+        let rest: Vec<String> = args.iter().filter(|a| a.as_str() != "sync").cloned().collect();
+        let (root, snapdir) = parse_args(&rest);
+        sync_bootloader_entries(&root, &snapdir, true);
+        std::process::exit(0);
+    }
     let (root, snapdir) = parse_args(&args);
 
     // Crochet de test : permet un smoke test hors root (le vrai usage relance
@@ -1168,6 +1177,11 @@ fn main() {
     if !btrfs_available() {
         eprintln!("ERREUR: 'btrfs' introuvable. Installez btrfs-progs.");
         std::process::exit(1);
+    }
+    // Réécrire le script d'instantané au démarrage (root) : correctifs
+    // appliqués aux automatisations existantes, sans les recréer.
+    if is_root() {
+        install_snap_script();
     }
     if std::env::var("QT_QPA_PLATFORM").is_err()
         && std::env::var("DISPLAY").is_err()

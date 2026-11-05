@@ -27,7 +27,7 @@ OUT_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else SRC_DIR
 
 PACKAGE_NAME   = "btrfsmgr-gui"
 VERSION        = "1.1.6"   # must match VERSION in btrfsmgr.py
-RELEASE        = 9   # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 4
+RELEASE        = 11  # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 4
 DIST_RELEASE   = 1
 ARCH           = "x86_64"
 DIST_NAME      = "Solus"
