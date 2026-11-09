@@ -27,7 +27,7 @@ OUT_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else SRC_DIR
 
 PACKAGE_NAME   = "btrfsmgr-gui"
 VERSION        = "1.1.6"   # must match VERSION in btrfsmgr.py
-RELEASE        = 11  # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 4
+RELEASE        = 13  # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 4
 DIST_RELEASE   = 1
 ARCH           = "x86_64"
 DIST_NAME      = "Solus"
@@ -59,6 +59,7 @@ FILE_LIST = [
 # and verified at runtime by btrfsmgr itself.
 RUNTIME_DEPS = []
 
+
 OUT_FILENAME = f"{PACKAGE_NAME}-{VERSION}-{RELEASE}-{DIST_RELEASE}-{ARCH}.eopkg"
 
 # Description française (métadonnées XML — accents préservés en UTF-8).
@@ -84,7 +85,7 @@ def sha1_hex(data: bytes) -> str:
 
 def file_type_for(path: str) -> str:
     """Return the eopkg file type for a given absolute path (no leading /)."""
-    if path.startswith("usr/bin/") or path.startswith("bin/"):
+    if path.startswith("usr/bin/") or path.startswith("usr/local/bin/") or path.startswith("bin/"):
         return "executable"
     if path.startswith("usr/libexec/") or path.startswith("usr/sbin/") or path.startswith("sbin/"):
         return "executable"
