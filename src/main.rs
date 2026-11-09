@@ -923,7 +923,10 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
         );
         hl.add(
             PushButton::new(t("Quitter"))
-                .on_clicked(|| std::process::exit(0))
+                .on_clicked(|| {
+                    release_boot_mount();
+                    std::process::exit(0)
+                })
                 .parent(&header)
                 .build(),
         );
@@ -1077,9 +1080,11 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
             let (w, h) = unsafe { (ffi::QWidget_width(p), ffi::QWidget_height(p)) };
             if w < 200 || h < 100 {
                 eprintln!("GEOM_FAIL tabs w={w} h={h}");
+                release_boot_mount();
                 std::process::exit(1);
             }
             eprintln!("GEOM_OK tabs w={w} h={h}");
+            release_boot_mount();
             std::process::exit(0);
         });
     }
@@ -1164,6 +1169,7 @@ fn main() {
         let rest: Vec<String> = args.iter().filter(|a| a.as_str() != "sync").cloned().collect();
         let (root, snapdir) = parse_args(&rest);
         sync_bootloader_entries(&root, &snapdir, true);
+        release_boot_mount();
         std::process::exit(0);
     }
     let (root, snapdir) = parse_args(&args);
@@ -1205,8 +1211,14 @@ fn main() {
         if let Ok(ms) = ms.parse::<i32>() {
             // Single-shot sur le thread Qt : évite l'arrêt d'un timer Qt
             // depuis un autre thread (« Timers cannot be stopped… »).
-            qtrs::Timer::single_shot(ms, || std::process::exit(0));
+            qtrs::Timer::single_shot(ms, || {
+                release_boot_mount();
+                std::process::exit(0)
+            });
         }
     }
     app.exec();
+    // Fermeture normale de la fenêtre : libérer /boot s'il a été monté par
+    // l'application (pas s'il l'était déjà avant).
+    release_boot_mount();
 }
