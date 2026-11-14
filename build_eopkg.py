@@ -27,12 +27,12 @@ OUT_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else SRC_DIR
 
 PACKAGE_NAME   = "btrfsmgr-gui"
 VERSION        = "1.1.6"   # must match VERSION in btrfsmgr.py
-RELEASE        = 14  # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 4
+RELEASE        = 15  # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 4
 DIST_RELEASE   = 1
 ARCH           = "x86_64"
 DIST_NAME      = "Solus"
 BUILD_HOST     = "solus-local"
-HOME_PAGE      = "https://depoa.julien68.fr/Linuxon/btrfsmgr-gui"
+HOME_PAGE      = "https://github.com/Julien684/btrfsmgr-gui"
 PACKAGER_NAME  = "Julien"
 PACKAGER_EMAIL = "julien_solus@use.startmail.com"
 PART_OF        = "system.utilities"
@@ -51,6 +51,11 @@ FILE_LIST = [
     ("usr/share/polkit-1/actions/btrfsmgr-gui.policy", "btrfsmgr-gui.policy", 0o644),
     ("usr/share/doc/btrfsmgr-gui/README.md",      "README.md",           0o644),
     ("usr/share/licenses/btrfsmgr-gui/LICENSE",   "LICENSE",             0o644),
+    ("usr/share/metainfo/fr.julien68.BtrfsManagerGui.metainfo.xml", "fr.julien68.BtrfsManagerGui.metainfo.xml", 0o644),
+    ("usr/share/icons/hicolor/24x24/apps/btrfsmgr-gui.png", "btrfsmgr-gui-24.png", 0o644),
+    ("usr/share/icons/hicolor/48x48/apps/btrfsmgr-gui.png", "btrfsmgr-gui-48.png", 0o644),
+    ("usr/share/icons/hicolor/128x128/apps/btrfsmgr-gui.png", "btrfsmgr-gui-128.png", 0o644),
+    ("usr/share/doc/btrfsmgr-gui/screenshot.png", "gui-screenshot.png", 0o644),
 ]
 
 # No runtime deps in the .eopkg: `eopkg install <url>` downloads a single

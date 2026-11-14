@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect x="2" y="2" width="124" height="124" rx="28" fill="#24513C"/>
+  <!-- fenêtre = interface graphique -->
+  <rect x="16" y="20" width="96" height="88" rx="12" fill="none" stroke="#FFFFFF" stroke-width="8"/>
+  <path d="M16 40 H112" stroke="#FFFFFF" stroke-width="8"/>
+  <!-- arbre (même marque, réduite) -->
+  <path d="M64 92 V66" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+  <path d="M64 76 L50 64" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
+  <path d="M64 76 L78 64" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="64" cy="54" r="9" fill="#8FD6A8"/>
+  <circle cx="49" cy="60" r="7" fill="#8FD6A8"/>
+  <circle cx="79" cy="60" r="7" fill="#8FD6A8"/>
+</svg>
