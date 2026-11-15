@@ -178,6 +178,11 @@ suppression automatique des plus anciens au-delà de N (rétention).
 Suivi : `systemctl list-timers | grep btrfsmgr`,
 `journalctl -u btrfsmgr-snap-*`.
 
+Plan « au démarrage » : le déclencheur est un `OnBootSec=<N>s` — dans
+l'onglet Automatisation du GUI, le délai se saisit en **secondes ou en
+minutes** (sélecteur d'unité), donc quelques secondes après le boot
+suffisent ; l'affichage reste lisible (`30 s`, `5 min`).
+
 Suppression d'un plan : option 6 du TUI — liste les timers `btrfsmgr`,
 choix, puis `systemctl disable --now` + suppression des fichiers dans
 `/etc/systemd/system`.
@@ -424,6 +429,11 @@ automatically deletes the oldest ones beyond N (retention).
 
 Monitoring: `systemctl list-timers | grep btrfsmgr`,
 `journalctl -u btrfsmgr-snap-*`.
+
+"At boot" schedules use an `OnBootSec=<N>s` trigger — in the GUI's
+Automation tab the delay is entered in **seconds or minutes** (unit
+selector), so a few seconds after boot is enough; the label stays
+readable (`30 s`, `5 min`).
 
 Removing a schedule: TUI option 6 — lists the `btrfsmgr` timers,
 you pick one, then `systemctl disable --now` + deletion of the files in
