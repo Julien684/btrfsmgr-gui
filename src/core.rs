@@ -31,7 +31,7 @@ pub const AUTO_NOTIF_DESKTOP: &str = "btrfsmgr-gui.desktop";
 pub const GUI_DESKTOP_FILE: &str = "/usr/share/applications/btrfsmgr-gui.desktop";
 
 pub const APP: &str = "btrfsmgr";
-pub const VERSION: &str = "1.1.6";
+pub const VERSION: &str = "1.1.7";
 pub const PROJECT_REPO: &str = "Linuxon/btrfsmgr";
 pub const PROJECT_REPO_URL: &str = "https://depoa.julien68.fr/Linuxon/btrfsmgr.git";
 pub const PROJECT_API: &str = "https://depoa.julien68.fr/api/v1/repos/Linuxon/btrfsmgr";
@@ -1004,8 +1004,32 @@ pub fn install_snap_script() -> String {
     SNAP_SCRIPT.to_string()
 }
 
+/// Formate un délai exprimé en secondes pour l'affichage : « 45 s », « 5 min ».
+/// Les multiples de 60 sont affichés en minutes pour rester lisibles.
+pub fn fmt_delay(secs: i64) -> String {
+    let secs = secs.max(0);
+    if secs >= 60 && secs % 60 == 0 {
+        format!("{} min", secs / 60)
+    } else {
+        format!("{secs} s")
+    }
+}
+
+/// Convertit un délai saisi (« secondes » ou « minutes », FR ou EN) en secondes.
+/// Borné à 24 h pour rester dans les limites raisonnables de OnBootSec.
+pub fn delay_to_seconds(value: i64, unit: &str) -> i64 {
+    let v = value.max(0);
+    let secs = if unit.to_lowercase().starts_with("minut") {
+        v * 60
+    } else {
+        v
+    };
+    secs.min(86_400)
+}
+
 /// Contenu (service, timer, description du planning) des unités systemd.
 /// Fonction pure : testable et comparée au Python en non-régression.
+/// `boot_delay` est exprimé en SECONDES.
 #[allow(clippy::too_many_arguments)]
 pub fn timer_unit_contents(
     root: &str,
@@ -1026,11 +1050,11 @@ pub fn timer_unit_contents(
         "[Unit]\nDescription={APP} — snapshot btrfs de {root} ({tag})\nDefaultDependencies=no\n\n[Service]\nType=oneshot\nExecStart={script_path} {root} {snapdir} {tag}-%%Y%%m%%d-%%H%%M%%S {keep} {once_flag}\nRemainAfterExit=no\nUser=root\n"
     );
     let (trigger, plan) = if boot {
-        let mut plan = format!("Au démarrage ({boot_delay} min après le boot)");
+        let mut plan = format!("Au démarrage ({} après le boot)", fmt_delay(boot_delay));
         if once_per_day {
             plan.push_str(" — un seul instantané par jour");
         }
-        (format!("OnBootSec={boot_delay}min"), plan)
+        (format!("OnBootSec={boot_delay}s"), plan)
     } else {
         (format!("OnCalendar={schedule}"), schedule.to_string())
     };
@@ -1856,6 +1880,36 @@ mod tests {
         assert_eq!(human_size(1023.0), "1023.0o");
         assert_eq!(human_size(1024.0), "1.0K");
         assert_eq!(human_size(1536.0), "1.5K");
+    }
+
+    #[test]
+    fn boot_delay_uses_seconds_in_timer_unit() {
+        // Quelques secondes doivent être possibles (OnBootSec=30s), et les
+        // multiples de 60 restent lisibles en minutes à l'affichage.
+        let (_, tmr, plan) = timer_unit_contents(
+            "/", "snapshots", "quick", "", 7, true, 30, false, "/usr/local/bin/x.sh",
+        );
+        assert!(tmr.contains("OnBootSec=30s"));
+        assert!(plan.contains("30 s"));
+
+        let (_, tmr, plan) = timer_unit_contents(
+            "/", "snapshots", "daily", "", 7, true, 300, false, "/usr/local/bin/x.sh",
+        );
+        assert!(tmr.contains("OnBootSec=300s"));
+        assert!(plan.contains("5 min"));
+    }
+
+    #[test]
+    fn delay_unit_is_converted_and_clamped() {
+        assert_eq!(delay_to_seconds(30, "secondes"), 30);
+        assert_eq!(delay_to_seconds(30, "seconds"), 30);
+        assert_eq!(delay_to_seconds(5, "minutes"), 300);
+        assert_eq!(delay_to_seconds(0, "minutes"), 0);
+        assert_eq!(delay_to_seconds(-4, "secondes"), 0);
+        assert_eq!(delay_to_seconds(2000, "minutes"), 86_400);
+        assert_eq!(fmt_delay(30), "30 s");
+        assert_eq!(fmt_delay(90), "90 s");
+        assert_eq!(fmt_delay(60), "1 min");
     }
 
     #[test]

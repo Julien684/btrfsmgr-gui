@@ -26,13 +26,13 @@ SRC_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".")
 OUT_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else SRC_DIR
 
 PACKAGE_NAME   = "btrfsmgr-gui"
-VERSION        = "1.1.6"   # must match VERSION in btrfsmgr.py
-RELEASE        = 15  # strictly increasing across releases (pisi compares ONLY this) — prev repo release was 4
+VERSION        = "1.1.7"   # must match VERSION in src/core.rs
+RELEASE        = 16  # strictly increasing across releases (pisi compares ONLY this)
 DIST_RELEASE   = 1
 ARCH           = "x86_64"
 DIST_NAME      = "Solus"
 BUILD_HOST     = "solus-local"
-HOME_PAGE      = "https://github.com/Julien684/btrfsmgr-gui"
+HOME_PAGE      = "https://depoa.julien68.fr/Linuxon/btrfsmgr-gui"
 PACKAGER_NAME  = "Julien"
 PACKAGER_EMAIL = "julien_solus@use.startmail.com"
 PART_OF        = "system.utilities"

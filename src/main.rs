@@ -17,8 +17,8 @@ use qtrs::ffi;
 use qtrs::prelude::*;
 use qtrs::{
     get_int, get_text, Application, CheckBox, ComboBox, GridLayout, GroupBox, HBoxLayout, Label,
-    LineEdit, MainWindow, MessageBox, PlainTextEdit, PushButton, ScrollArea, SpinBox, TabWidget,
-    TableWidget, VBoxLayout, Widget, INFORMATION, CANCEL, NO, YES,
+    LineEdit, MainWindow, MessageBox, PlainTextEdit, PushButton, ScrollArea, Spacer, SpinBox,
+    SpacerExt, TabWidget, TableWidget, VBoxLayout, Widget, INFORMATION, CANCEL, NO, YES,
 };
 
 mod core;
@@ -57,6 +57,7 @@ struct Ui {
     p_hour: *mut ffi::QSpinBox,
     p_boot: *mut ffi::QCheckBox,
     p_delay: *mut ffi::QSpinBox,
+    p_delay_unit: *mut ffi::QComboBox,
     p_once: *mut ffi::QCheckBox,
     p_keep: *mut ffi::QSpinBox,
     p_timeout: *mut ffi::QSpinBox,
@@ -465,7 +466,8 @@ Cette opération est destructive.",
         };
         let freq = combo(self.p_freq);
         let boot = checked(self.p_boot);
-        let boot_delay = spin(self.p_delay) as i64;
+        // Délai saisi dans l'unité choisie → secondes (unité systemd OnBootSec).
+        let boot_delay = delay_to_seconds(spin(self.p_delay) as i64, &combo(self.p_delay_unit));
         let once_per_day = if boot { checked(self.p_once) } else { false };
         let keep = spin(self.p_keep) as i64;
         let hour = spin(self.p_hour);
@@ -490,7 +492,7 @@ Cette opération est destructive.",
         };
 
         let plan = if boot {
-            format!("Au démarrage ({boot_delay} min après le boot)")
+            format!("Au démarrage ({} après le boot)", fmt_delay(boot_delay))
         } else {
             format!("OnCalendar={schedule}")
         };
@@ -793,17 +795,35 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
     let p_boot = boot_chk.widget_ptr() as *mut ffi::QCheckBox;
     fg.add(boot_chk, 5, 0, 1, 2);
 
-    let delay_lbl = Label::new(t("Minutes après le démarrage"))
+    let delay_lbl = Label::new(t("Délai après le démarrage"))
         .parent(&form_box)
         .build();
     fg.add(delay_lbl, 6, 0, 1, 1);
+    // Délai + unité : quelques secondes suffisent souvent, mais les minutes
+    // restent disponibles. La valeur est convertie en secondes à la création.
+    // Le spacer final garde les deux champs collés à gauche.
+    let delay_row = Widget::new().parent(&form_box).build();
+    let mut delay_hl = HBoxLayout::with_parent(&delay_row);
+    delay_hl.set_spacing(8);
     let delay_sp = SpinBox::new()
-        .range(0, 1440)
+        .range(0, 86400)
         .value(5)
-        .parent(&form_box)
+        .parent(&delay_row)
         .build();
+    delay_sp.set_fixed_width(110);
     let p_delay = delay_sp.widget_ptr() as *mut ffi::QSpinBox;
-    fg.add(delay_sp, 6, 1, 1, 1);
+    delay_hl.add(delay_sp);
+    let unit_sec = t("secondes");
+    let unit_min = t("minutes");
+    let delay_unit_cb = ComboBox::new()
+        .items(&[&unit_min, &unit_sec])
+        .parent(&delay_row)
+        .build();
+    delay_unit_cb.set_fixed_width(130);
+    let p_delay_unit = delay_unit_cb.widget_ptr() as *mut ffi::QComboBox;
+    delay_hl.add(delay_unit_cb);
+    delay_hl.add_spacer(Spacer::horizontal_expanding());
+    fg.add(delay_row, 6, 1, 1, 1);
 
     let once_chk = CheckBox::new(t(
         "Un seul instantané par jour (sinon un par démarrage)",
@@ -892,6 +912,7 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
         p_hour,
         p_boot,
         p_delay,
+        p_delay_unit,
         p_once,
         p_keep,
         p_timeout,
@@ -1063,6 +1084,7 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
     layouts.push(Box::new(v_snap_box));
     layouts.push(Box::new(snap_hl));
     layouts.push(Box::new(v_sched));
+    layouts.push(Box::new(delay_hl));
     layouts.push(Box::new(fg));
     layouts.push(Box::new(v_boot));
     layouts.push(Box::new(bg));
