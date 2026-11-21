@@ -16,13 +16,15 @@ use cxx::let_cxx_string;
 use qtrs::ffi;
 use qtrs::prelude::*;
 use qtrs::{
-    get_int, get_text, Application, CheckBox, ComboBox, GridLayout, GroupBox, HBoxLayout, Label,
-    LineEdit, MainWindow, MessageBox, PlainTextEdit, PushButton, ScrollArea, Spacer, SpinBox,
-    SpacerExt, TabWidget, TableWidget, VBoxLayout, Widget, INFORMATION, CANCEL, NO, YES,
+    get_int, get_text, Application, CheckBox, ComboBox, Frame, GridLayout, GroupBox, HBoxLayout,
+    Label, LineEdit, MainWindow, MessageBox, PlainTextEdit, PushButton, ScrollArea, Spacer,
+    SpacerExt, SpinBox, TabWidget, TableWidget, VBoxLayout, Widget, INFORMATION, CANCEL, NO, YES,
 };
+use qtrs::frame::{H_LINE, SUNKEN};
 
 mod core;
 mod i18n;
+mod rescue;
 
 use core::*;
 use i18n::{t, tf};
@@ -133,6 +135,34 @@ fn question(title: &str, text: &str) -> bool {
         .default_button(YES)
         .build();
     msg.exec() == YES
+}
+
+/// Résumé affiché par « Aide → À propos ».
+fn about_text(root: &str) -> String {
+    format!(
+        "{APP} — Gestionnaire d'instantanés BTRFS\n\
+         Version {VERSION} (Qt6)\n\
+         Sous-volume racine : {root}\n\n\
+         Onglets\n\
+         • Général — chargeur de démarrage, sous-volume par défaut, espace disque\n\
+         • Instantanés — créer, restaurer (échange CoW), supprimer, rétention\n\
+         • Automatisation — timers systemd (horaire ou au démarrage) + rétention\n\
+         • Boot — entrées systemd-boot et durée d'affichage du menu\n\n\
+         Dépannage (live)\n\
+         • agir sur les instantanés d'un AUTRE disque BTRFS (session live)\n\
+         • création et restauration uniquement : rien n'est écrit dans /etc,\n\
+           /boot, systemd ni fstab de la cible\n\n\
+         Licence GPL-3.0-or-later\n\
+         Dépôt : {PROJECT_API}"
+    )
+}
+
+fn show_about(root: &str) {
+    qtrs::information(
+        None,
+        &t("À propos de btrfsmgr-gui"),
+        &about_text(root),
+    );
 }
 
 impl Ui {
@@ -384,7 +414,10 @@ Cette opération est destructive.",
             .map(|s| s.path.clone())
             .collect::<Vec<_>>()
             .join("\n");
-        let body = format!("{} :\n\n{names}", t("Suppression DÉFINITIVE (sous-volumes)"));
+        let body = format!(
+            "{} :\n\n{names}",
+            t("Suppression DÉFINITIVE (sous-volumes)")
+        );
         let action = tf(
             "Supprimer {n} snapshot(s)",
             &[("n", &targets.len().to_string())],
@@ -504,7 +537,10 @@ Cette opération est destructive.",
             "Planning : {plan}\nRétention: {keep} snapshot(s)\nCible    : {}\n\nCréer le timer systemd '{tag}' ?",
             join_path(&self.root, &self.snapdir)
         );
-        if !question(&tf("Créer le timer systemd '{tag}' ?", &[("tag", &tag)]), &text) {
+        if !question(
+            &tf("Créer le timer systemd '{tag}' ?", &[("tag", &tag)]),
+            &text,
+        ) {
             return;
         }
         let (root, sd, tag2) = (self.root.clone(), self.snapdir.clone(), tag.clone());
@@ -602,6 +638,7 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
     // le QLayout C++ et laisse ses enfants sans géométrie (widgets empilés à
     // 0,0 avec leur sizeHint).
     let mut layouts: Vec<Box<dyn std::any::Any>> = Vec::new();
+
     let mut central = Widget::new().build();
     // `set_central_widget` ne transfère PAS l'ownership côté Rust : sans ce
     // drapeau, le wrapper détruit le QWidget central à sa sortie de portée et
@@ -610,6 +647,15 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
     let mut root_l = VBoxLayout::with_parent(&central);
     root_l.set_spacing(8);
     root_l.set_contents_margins(10, 8, 10, 8);
+
+    // Filet de séparation sous la barre de menus : elle se confondait avec le
+    // haut de la fenêtre. Un QFrame suit la palette du thème (contrairement à
+    // une bordure CSS, cf. commentaire plus bas).
+    let menu_sep = Frame::new()
+        .set_frame_shape(H_LINE)
+        .set_frame_shadow(SUNKEN)
+        .parent(&central)
+        .build();
 
     // --- en-tête (contenu ajouté après la création de `Ui`) ----------------
     let header = Widget::new().parent(&central).build();
@@ -742,11 +788,7 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
 
     let freq_lbl = Label::new(t("Fréquence")).parent(&form_box).build();
     fg.add(freq_lbl, 1, 0, 1, 1);
-    let freq_items = [
-        t("Chaque jour"),
-        t("Chaque semaine"),
-        t("Chaque mois"),
-    ];
+    let freq_items = [t("Chaque jour"), t("Chaque semaine"), t("Chaque mois")];
     let freq_cb = ComboBox::new()
         .items(&[&freq_items[0], &freq_items[1], &freq_items[2]])
         .parent(&form_box)
@@ -787,11 +829,9 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
     let p_hour = hour_sp.widget_ptr() as *mut ffi::QSpinBox;
     fg.add(hour_sp, 4, 1, 1, 1);
 
-    let boot_chk = CheckBox::new(t(
-        "Au démarrage de la machine (au lieu d'un horaire)",
-    ))
-    .parent(&form_box)
-    .build();
+    let boot_chk = CheckBox::new(t("Au démarrage de la machine (au lieu d'un horaire)"))
+        .parent(&form_box)
+        .build();
     let p_boot = boot_chk.widget_ptr() as *mut ffi::QCheckBox;
     fg.add(boot_chk, 5, 0, 1, 2);
 
@@ -825,11 +865,9 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
     delay_hl.add_spacer(Spacer::horizontal_expanding());
     fg.add(delay_row, 6, 1, 1, 1);
 
-    let once_chk = CheckBox::new(t(
-        "Un seul instantané par jour (sinon un par démarrage)",
-    ))
-    .parent(&form_box)
-    .build();
+    let once_chk = CheckBox::new(t("Un seul instantané par jour (sinon un par démarrage)"))
+        .parent(&form_box)
+        .build();
     let p_once = once_chk.widget_ptr() as *mut ffi::QCheckBox;
     fg.add(once_chk, 7, 0, 1, 2);
 
@@ -860,7 +898,9 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
     let page_boot = Widget::new().parent(&central).build();
     let mut v_boot = VBoxLayout::with_parent(&page_boot);
     v_boot.set_spacing(8);
-    let boot_box = GroupBox::new(t("Menu de démarrage")).parent(&page_boot).build();
+    let boot_box = GroupBox::new(t("Menu de démarrage"))
+        .parent(&page_boot)
+        .build();
     let mut bg = GridLayout::with_parent(&boot_box);
     let boot_info = Label::new("").parent(&boot_box).build();
     let p_bootpage = boot_info.widget_ptr() as *mut ffi::QLabel;
@@ -919,7 +959,13 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
     });
 
     // --- boutons (après Ui : capturent un Weak<Ui>) -------------------------
-    // En-tête : titre + Actualiser + Quitter, dans UN SEUL layout.
+    // En-tête : titre + Dépannage + À propos + Actualiser + Quitter.
+    //
+    // Ces deux entrées étaient dans une barre de menus (QMenuBar). Sous le
+    // thème sombre de l'utilisateur, Qt dessinait ses intitulés avec une
+    // couleur quasi identique au fond (illisibles), et qtrs n'expose aucune
+    // API de palette pour corriger la couleur. Des boutons utilisent le même
+    // rendu que « Actualiser »/« Quitter », lisibles dans tous les thèmes.
     {
         let mut hl = HBoxLayout::with_parent(&header);
         hl.set_spacing(8);
@@ -930,6 +976,19 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
             ))
             .parent(&header)
             .build(),
+        );
+        hl.add(
+            PushButton::new(t("Dépannage (live)…"))
+                .on_clicked(rescue::open_window)
+                .parent(&header)
+                .build(),
+        );
+        let about_root = ui.root.clone();
+        hl.add(
+            PushButton::new(t("À propos"))
+                .on_clicked(move || show_about(&about_root))
+                .parent(&header)
+                .build(),
         );
         let w = Rc::downgrade(&ui);
         hl.add(
@@ -952,9 +1011,9 @@ fn build_ui(root: String, snapdir: String) -> (MainWindow, Rc<Ui>, Vec<Box<dyn s
                 .build(),
         );
         layouts.push(Box::new(hl));
+        root_l.add(menu_sep);
         root_l.add(header);
     }
-
 
     // Snapshots
     {
@@ -1184,11 +1243,18 @@ fn relaunch_root(args: &[String]) -> ! {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // `--rescue` : ouvre directement la fenêtre de dépannage (session live).
+    // Le chemin normal reste le menu Fichier → Dépannage (live).
+    let rescue_mode = args.iter().any(|a| a == "--rescue");
     // Mode headless utilisé par le script d'instantané quand SEUL le paquet
     // GUI est installé (il ne fournit plus /usr/bin/btrfsmgr) :
     //   btrfsmgr-gui sync <root> --snapdir <dir>
     if args.iter().any(|a| a == "sync") {
-        let rest: Vec<String> = args.iter().filter(|a| a.as_str() != "sync").cloned().collect();
+        let rest: Vec<String> = args
+            .iter()
+            .filter(|a| a.as_str() != "sync")
+            .cloned()
+            .collect();
         let (root, snapdir) = parse_args(&rest);
         sync_bootloader_entries(&root, &snapdir, true);
         release_boot_mount();
@@ -1206,6 +1272,11 @@ fn main() {
         eprintln!("ERREUR: 'btrfs' introuvable. Installez btrfs-progs.");
         std::process::exit(1);
     }
+    // Vérification du backend sans interface (image BTRFS en boucle sur la VM) :
+    //   btrfsmgr-gui --rescue --selftest [/dev/loopX]
+    if args.iter().any(|a| a == "--selftest") {
+        std::process::exit(rescue::self_test(&args));
+    }
     // Réécrire le script d'instantané au démarrage (root) : correctifs
     // appliqués aux automatisations existantes, sans les recréer.
     if is_root() {
@@ -1221,13 +1292,51 @@ fn main() {
 
     let app = Application::new();
     app.set_desktop_file_name("btrfsmgr-gui");
-    let (window, ui, _layouts) = build_ui(root.clone(), snapdir.clone());
-    ui.log_line(&format!(
-        "{} v{} — sous-volume racine: {}",
-        APP, VERSION, root
-    ));
-    window.show();
-    ui.refresh_all();
+
+    // Les objets Qt doivent rester vivants jusqu'au retour de `app.exec()` :
+    // une fenêtre droppée disparaît, un QLayout droppé laisse ses enfants sans
+    // géométrie. On les garde donc dans des liaisons de la portée de `main`.
+    let mut keep_window: Option<MainWindow> = None;
+    let mut keep_layouts: Vec<Box<dyn std::any::Any>> = Vec::new();
+    let mut keep_ui: Option<Rc<Ui>> = None;
+
+    if rescue_mode {
+        rescue::open_window();
+        // Même contrôle de géométrie que la fenêtre principale, pour le
+        // smoke test du mode dépannage.
+        if std::env::var("BTRFSMGR_GUI_ASSERT_GEOM").is_ok() {
+            qtrs::Timer::single_shot(1200, rescue::assert_geometry);
+        }
+    } else {
+        let (window, ui, layouts) = build_ui(root.clone(), snapdir.clone());
+        ui.log_line(&format!(
+            "{} v{} — sous-volume racine: {}",
+            APP, VERSION, root
+        ));
+        window.show();
+        ui.refresh_all();
+        keep_layouts = layouts;
+        keep_ui = Some(ui);
+        keep_window = Some(window);
+
+        // Crochet de test : ouvre la fenêtre de dépannage DEPUIS le processus
+        // principal, exactement comme le menu Fichier → Dépannage (live)
+        // (vérifie la coexistence des deux fenêtres en un seul processus).
+        if let Ok(ms) = std::env::var("BTRFSMGR_GUI_OPEN_RESCUE_MS") {
+            if let Ok(ms) = ms.parse::<i32>() {
+                qtrs::Timer::single_shot(ms, rescue::open_window);
+            }
+        }
+        // Crochet de test : ouvre « Aide → À propos » (dialogue modal, donc
+        // destiné à une capture suivie d'un arrêt du processus).
+        if let Ok(ms) = std::env::var("BTRFSMGR_GUI_OPEN_ABOUT_MS") {
+            if let Ok(ms) = ms.parse::<i32>() {
+                let r = root.clone();
+                qtrs::Timer::single_shot(ms, move || show_about(&r));
+            }
+        }
+    }
+
     // Smoke test automatisé : quitte après N ms.
     if let Ok(ms) = std::env::var("BTRFSMGR_GUI_SMOKE_MS") {
         if let Ok(ms) = ms.parse::<i32>() {
@@ -1243,4 +1352,22 @@ fn main() {
     // Fermeture normale de la fenêtre : libérer /boot s'il a été monté par
     // l'application (pas s'il l'était déjà avant).
     release_boot_mount();
+    let _ = (&keep_window, &keep_layouts, &keep_ui);
+}
+
+#[cfg(test)]
+mod ui_tests {
+    use super::*;
+
+    #[test]
+    fn about_text_mentions_version_sections_and_license() {
+        let s = about_text("/mnt/cible");
+        assert!(s.contains(VERSION), "{s}");
+        assert!(s.contains("Sous-volume racine : /mnt/cible"), "{s}");
+        assert!(s.contains("Dépannage (live)"), "{s}");
+        assert!(s.contains("GPL-3.0-or-later"), "{s}");
+        for section in ["Général", "Instantanés", "Automatisation", "Boot"] {
+            assert!(s.contains(section), "section {section} absente:\n{s}");
+        }
+    }
 }
