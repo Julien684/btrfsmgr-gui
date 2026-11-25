@@ -26,7 +26,7 @@ s = s.replace(
     'pub const AUTO_NOTIF_DESKTOP: &str = "btrfsmgr-gui.desktop";\n'
     'pub const GUI_DESKTOP_FILE: &str = "/usr/share/applications/btrfsmgr-gui.desktop";',
 )
-s = s.replace('pub const VERSION: &str = "1.0.15";', 'pub const VERSION: &str = "1.1.7";')
+s = s.replace('pub const VERSION: &str = "1.0.16";', 'pub const VERSION: &str = "1.1.8";')
 pos = s.find("\nuse ")
 s = s[:pos] + "\n#![allow(dead_code)] // cœur partagé : la GUI n'utilise pas tout\n" + s[pos:]
 # La GUI ne doit pas hériter du fallback .desktop du TUI (Terminal=true,

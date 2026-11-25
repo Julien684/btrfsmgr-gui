@@ -26,8 +26,8 @@ SRC_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".")
 OUT_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else SRC_DIR
 
 PACKAGE_NAME   = "btrfsmgr-gui"
-VERSION        = "1.1.7"   # must match VERSION in src/core.rs
-RELEASE        = 20  # strictly increasing across releases (pisi compares ONLY this)
+VERSION        = "1.1.8"   # must match VERSION in src/core.rs
+RELEASE        = 21  # strictly increasing across releases (pisi compares ONLY this)
 DIST_RELEASE   = 1
 ARCH           = "x86_64"
 DIST_NAME      = "Solus"

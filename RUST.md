@@ -103,11 +103,11 @@ Mode dépannage :
 
 ## État
 
-* L'`.eopkg` Rust/Qt6 est construit : `btrfsmgr-gui-1.1.7-20-1-x86_64.eopkg`
+* L'`.eopkg` Rust/Qt6 est construit : `btrfsmgr-gui-1.1.8-21-1-x86_64.eopkg`
   (binaire + `.desktop` + policy polkit ; ne fournit plus `/usr/bin/btrfsmgr`,
-  qui appartient au paquet TUI). Installé et vérifié sur la VM par mise à jour
-  depuis la release 16 (17, 18, 19 puis 20) ; le binaire du paquet est celui qui a passé les tests
-  (`sha256 1d6807be…`).
+  qui appartient au paquet TUI). Installé et vérifié sur la VM jusqu'à la
+  release 20 ; le binaire embarqué dans la 21 est celui qui a passé les tests
+  (`sha256 bf3436c9…`).
 * `install.sh` a été retiré : installation depuis les sources via
   `cargo build --release` puis copie du binaire.
 * Tests d'interaction automatisés des autres boutons (restauration,

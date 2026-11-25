@@ -31,7 +31,7 @@ pub const AUTO_NOTIF_DESKTOP: &str = "btrfsmgr-gui.desktop";
 pub const GUI_DESKTOP_FILE: &str = "/usr/share/applications/btrfsmgr-gui.desktop";
 
 pub const APP: &str = "btrfsmgr";
-pub const VERSION: &str = "1.1.7";
+pub const VERSION: &str = "1.1.8";
 pub const PROJECT_REPO: &str = "Linuxon/btrfsmgr";
 pub const PROJECT_REPO_URL: &str = "https://depoa.julien68.fr/Linuxon/btrfsmgr.git";
 pub const PROJECT_API: &str = "https://depoa.julien68.fr/api/v1/repos/Linuxon/btrfsmgr";
@@ -961,12 +961,24 @@ pub fn install_snap_script() -> String {
     if let Some(parent) = Path::new(SNAP_SCRIPT).parent() {
         let _ = fs::create_dir_all(parent);
     }
-    if fs::write(SNAP_SCRIPT, body).is_ok() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(SNAP_SCRIPT, fs::Permissions::from_mode(0o755));
+    // Écriture ATOMIQUE (tmp + rename) : `sync` peut réécrire le script alors
+    // qu'il est en cours d'exécution par le service du timer. Bash lit son
+    // fichier au fil de l'eau ; tronquer/écraser en place casse l'exécution,
+    // tandis qu'un rename laisse le processus en cours sur l'ancien inode.
+    let tmp = format!("{SNAP_SCRIPT}.tmp.{}", std::process::id());
+    match fs::write(&tmp, body) {
+        Ok(_) => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755));
+            }
+            if let Err(e) = fs::rename(&tmp, SNAP_SCRIPT) {
+                let _ = fs::remove_file(&tmp);
+                sayln!("  ! script d'instantané non installé: {e}");
+            }
         }
+        Err(e) => sayln!("  ! script d'instantané non écrit: {e}"),
     }
 
     // Icône menu (.desktop)
@@ -1670,20 +1682,47 @@ pub fn entry_subvol_text(text: &str) -> String {
     String::new()
 }
 
+/// Résultat d'une tentative de synchronisation des entrées de démarrage.
+/// Permet à la CLI `sync` de sortir en erreur quand elle n'a réellement rien
+/// pu faire, au lieu de laisser le script d'instantané croire à un succès.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncOutcome {
+    /// Entrées relues ; ajouts/retraits effectués (ou rien à faire).
+    Done,
+    /// `/boot` n'a pas pu être monté (échec réel, à signaler).
+    BootUnavailable,
+    /// Le chargeur détecté n'est pas systemd-boot : no-op légitime.
+    NotSystemdBoot,
+    /// systemd-boot détecté mais `/boot/loader/entries` absent.
+    NoEntriesDir,
+}
+
 /// Synchroniser les entrées systemd-boot générées avec les snapshots présents.
 pub fn sync_bootloader_entries(root: &str, snapdir: &str, verbose: bool) {
+    let _ = sync_bootloader_entries_status(root, snapdir, verbose);
+}
+
+/// Idem mais renvoie l'issue réelle de l'opération.
+pub fn sync_bootloader_entries_status(root: &str, snapdir: &str, verbose: bool) -> SyncOutcome {
     if !ensure_boot_mounted() {
         if verbose {
             sayln!("Synchronisation boot: /boot inaccessible, ignoré.");
         }
-        return;
+        return SyncOutcome::BootUnavailable;
     }
-    if detect_bootloader() != "systemd-boot" {
-        return;
+    let loader = detect_bootloader();
+    if loader != "systemd-boot" {
+        if verbose {
+            sayln!("Synchronisation boot: chargeur « {loader} », rien à faire.");
+        }
+        return SyncOutcome::NotSystemdBoot;
     }
     let entries_dir = "/boot/loader/entries";
     if !Path::new(entries_dir).is_dir() {
-        return;
+        if verbose {
+            sayln!("Synchronisation boot: {entries_dir} absent, ignoré.");
+        }
+        return SyncOutcome::NoEntriesDir;
     }
     let snaps = list_snapshots(root, snapdir);
 
@@ -1755,6 +1794,7 @@ pub fn sync_bootloader_entries(root: &str, snapdir: &str, verbose: bool) {
             sayln!("  ! échec suppression {fname}");
         }
     }
+    SyncOutcome::Done
 }
 
 // ---------------------------------------------------------------------------

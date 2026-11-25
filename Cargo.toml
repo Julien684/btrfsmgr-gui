@@ -1,6 +1,6 @@
 [package]
 name = "btrfsmgr-gui"
-version = "1.1.7"
+version = "1.1.8"
 edition = "2021"
 rust-version = "1.85"
 description = "Gestionnaire graphique (Qt6) des instantanés BTRFS"

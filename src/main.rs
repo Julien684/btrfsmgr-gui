@@ -1256,8 +1256,18 @@ fn main() {
             .cloned()
             .collect();
         let (root, snapdir) = parse_args(&rest);
-        sync_bootloader_entries(&root, &snapdir, true);
+        // Réécrit le script d'instantané (écriture atomique côté cœur) : une
+        // automatisation qui tourne encore avec une ancienne copie récupère le
+        // correctif sans rouvrir l'interface.
+        if is_root() {
+            install_snap_script();
+        }
+        let outcome = sync_bootloader_entries_status(&root, &snapdir, true);
         release_boot_mount();
+        if outcome == SyncOutcome::BootUnavailable {
+            eprintln!("btrfsmgr-gui: /boot inaccessible — entrées de boot non synchronisées");
+            std::process::exit(3);
+        }
         std::process::exit(0);
     }
     let (root, snapdir) = parse_args(&args);
